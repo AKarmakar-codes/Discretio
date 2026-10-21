@@ -1,0 +1,1307 @@
+- What Do World Models
+Implicitly Learn? Revealing
+Latent Behavioral Priors
+Through Future Rollouts
+Amitava Das?
+
+? प्रragya Lab, BITS Pilani Goa, India
+
+Abstract
+World models are increasingly positioned as the predictive substrate of embodied intelligence,
+enabling simulation, planning, and action under uncertainty. Yet current evaluations largely
+ask whether these models can predict future frames, forecast trajectories, reconstruct hidden
+observations, or improve downstream control. These are necessary tests, but they miss a deeper
+question: what do world models implicitly learn beyond visible observation?
+We introduce DISCRETIO, a benchmark for revealing latent behavioral priors in predictive
+world models through their future rollouts. Rather than treating prediction accuracy as the
+sole endpoint, DISCRETIO probes the hidden assumptions that shape prediction when evidence
+is incomplete, occluded, ambiguous, or socially contextualized. For example, when a cyclist
+disappears behind a bus, a model may continue to reserve future occupancy for the cyclist, slow
+the predicted motion, or incorrectly let the agent vanish; similarly, when an adult, child, and
+elderly pedestrian approach the same crossing with matched position and velocity, differences
+in predicted stopping, crossing, or uncertainty reveal actor-specific priors. These priors are not
+assumed to be symbolic; they are measured through systematic shifts in predicted trajectories,
+future occupancy, uncertainty dispersion, collision margins, and multimodal rollout structure.
+DISCRETIO contains four controlled task families. Physical-belief tasks test object permanence
+and hidden-state tracking under occlusion: a cyclist enters behind a bus with known speed and
+heading, and the model must predict whether the cyclist continues, slows, turns, or vanishes
+from future occupancy. Behavioral-belief tasks test actor-specific expectations: an adult,
+child, and elderly pedestrian approach the same crossing with matched position, speed, and
+heading, and the benchmark measures whether predicted uncertainty, crossing probability,
+or stopping probability changes despite identical observed motion. Social-belief tasks test
+role-based interaction priors: two agents approach the same narrow passage under identical
+geometry, but one is marked as a delivery rider and the other as an ordinary commuter, revealing whether role identity alone shifts predicted yielding, acceleration, or collision avoidance.
+Counterfactual-belief tasks test contextual priors under fixed dynamics: the same crossing
+trajectory is rendered in a structured U.S. crosswalk, a dense Indian market street, and an
+unmarked road, exposing cultural or environmental priors beyond observed motion.
+We evaluate latent predictive world models, generative video world models, trajectory forecasting systems, and embodied planning models using multi-sample future rollouts. DISCRETIO
+reports metrics for prior persistence, belief revision, false-belief consistency, counterfactual
+sensitivity, calibration, and prior amplification relative to empirical uncertainty. By reframing
+world-model evaluation from prediction quality to prior discovery, DISCRETIO enables systematic auditing of the hidden assumptions that govern future simulation, providing a foundation
+for more trustworthy, interpretable, and socially aware embodied AI.
+
+1 What Do World Models Learn Beyond Observation?
+World models are becoming the predictive substrate of embodied intelligence: they simulate future
+states, support planning, and guide action under uncertainty (Ha and Schmidhuber, 2018; Hafner et al.,
+2020, 2023; LeCun, 2022). Yet most evaluations still ask a narrower question: can the model predict
+what happens next? This question is necessary, but incomplete. A model may forecast plausible
+futures while relying on hidden assumptions about persistence, intent, social roles, risk, or context.
+Thus, the central question is not only whether a world model predicts, but what it implicitly learns
+beyond direct observation.
+
+1.1 World Models as Predictive Systems
+The defining property of a world model is its ability to anticipate states that are not currently observed.
+Early systems learned compact latent dynamics for imagination-based control (Ha and Schmidhuber,
+2018; Hafner et al., 2020); later approaches scaled this idea to diverse control domains (Hafner
+et al., 2023). More recent predictive architectures, including JEPA-style models, emphasize learning
+representations that support prediction without necessarily reconstructing pixels (LeCun, 2022;
+Assran et al., 2025). Across these paradigms, the objective is shared: learn a representation of the
+world that can be rolled forward.
+However, rolling the world forward requires more than extrapolating visible motion. When objects
+are occluded, agents hesitate, roles differ, or environments change, the model must fill gaps using
+learned priors. These priors are often invisible to standard accuracy metrics.
+
+1.2 Prediction Is Not Understanding
+Current world-model evaluations primarily measure prediction quality: future-frame accuracy, trajectory error, reconstruction fidelity, planning success, or downstream control performance. Such
+metrics are valuable, but they evaluate the output of prediction, not the assumptions that produced it.
+This distinction matters. Two models may achieve similar trajectory error while encoding different
+latent expectations. One model may preserve an occluded cyclist as a continuing hidden entity;
+another may let the cyclist disappear once no longer visible. One model may assign higher hesitation
+probability to a child at a crossing; another may treat all pedestrians identically when position and
+velocity are matched. These differences reflect latent behavioral priors: learned expectations that
+shape future rollouts when evidence is incomplete, ambiguous, or socially contextualized.
+Thus, prediction accuracy is not enough. It tells us whether a future matched the data, but not why
+the model imagined that future.
+
+1.3 What Existing Benchmarks Measure
+Existing benchmarks have substantially advanced world-model evaluation. Physical reasoning
+benchmarks test whether models respect object permanence, contact, support, and physical consistency (???). Video prediction and forecasting benchmarks measure whether models generate plausible
+future observations. Planning and control benchmarks evaluate whether learned dynamics improve
+downstream decision making (Hafner et al., 2020, 2023). Representation-learning benchmarks test
+whether predictive features support recognition, forecasting, or action (LeCun, 2022; Assran et al.,
+2025).
+Evaluation Focus
+
+Performance
+
+Prior Discovery
+
+Video prediction / world
+modeling
+
+3
+
+7
+
+Physical reasoning
+
+3
+
+7
+
+Planning / control
+
+3
+
+7
+
+Predictive representation
+learning
+
+3
+
+7
+
+DISCRETIO
+
+3
+
+3
+
+Representative Work
+
+Future rollouts and latent imagination (Ha and Schmidhuber, 2018;
+Hafner et al., 2020, 2023)
+Physical plausibility, permanence,
+continuity, solidity (???)
+Downstream decision making through
+learned dynamics (Hafner et al., 2020,
+2023)
+Predictive representations for understanding, prediction, and planning (LeCun, 2022; Assran et al., 2025)
+Latent behavioral priors behind future rollouts
+
+Table 1: Evaluation gap. Existing evaluations measure whether predictive systems perform well, but do not
+systematically reveal the latent behavioral priors that shape their predicted futures. DISCRETIO explicitly
+targets this missing dimension.
+
+The missing dimension is therefore not prediction, physical consistency, representation quality, or
+control. The missing dimension is prior discovery: identifying the hidden assumptions that govern
+future simulation.
+
+1.4 Hidden Assumptions in Future Rollouts
+Future rollouts make latent priors observable. When evidence is complete, a model may simply follow
+visible dynamics. But when evidence becomes incomplete, occluded, ambiguous, or context-dependent,
+the model must rely on learned expectations.
+For example, if a cyclist moves behind a bus with known speed and heading, the model must decide
+whether the cyclist continues, slows, turns, stops, or vanishes from future occupancy. If an adult,
+child, and elderly pedestrian approach the same crossing with identical position, speed, and heading,
+differences in predicted stopping, crossing, or hesitation reveal actor-specific behavioral priors. If
+a delivery rider and an ordinary commuter enter the same narrow passage under identical geometry,
+changes in yielding or collision avoidance reveal role-based social priors. If the same crossing
+trajectory is rendered in a structured U.S. crosswalk, a dense Indian market street, and an unmarked
+road, shifts in prediction reveal contextual priors beyond observed motion.
+These priors need not be symbolic. They may appear as changes in trajectory distributions, future
+occupancy, uncertainty dispersion, collision margins, or multimodal rollout structure. The key insight
+is simple: what a model rolls out reveals what it has implicitly learned.
+
+1.5 The Missing Evaluation Dimension
+We argue that world-model evaluation requires a shift from prediction quality to prior discovery.
+Existing benchmarks ask: Did the model predict the future correctly? We ask: What assumptions
+shaped the predicted future?
+To formalize this question, we organize latent behavioral priors into four families:
+• Physical Priors: object permanence, hidden-state tracking, and motion continuity.
+• Behavioral Priors: intent inference, hesitation expectation, and risk sensitivity.
+• Social Priors: role priors, yielding expectations, and interaction norms.
+• Contextual Priors: cultural priors, environmental priors, and contextual expectations.
+These priors capture what world models learn beyond visible observation. They determine whether
+hidden entities persist, whether agents are expected to hesitate, whether roles alter interaction
+dynamics, and whether context changes imagined futures.
+To our knowledge, no existing benchmark systematically measures latent behavioral priors in
+predictive world models under controlled variations of hidden state, agent identity, social role,
+and environmental context. We introduce DISCRETIO to fill this gap: a benchmark for revealing,
+quantifying, and comparing the priors that shape future rollouts.
+
+2 Latent Behavioral Priors in Predictive World Models
+Section 1 showed that prediction quality alone does not reveal what a world model has implicitly
+learned. We now formalize the missing object of evaluation: latent behavioral priors. These priors
+are not hand-coded rules, symbolic beliefs, or explicit world states. They are learned expectations
+that shape future rollouts whenever observation alone is insufficient to determine what happens next.
+A latent prior is not what a model predicts; it is what makes one future more likely than another
+when multiple futures remain compatible with the same evidence. This distinction is central. Prediction tells us the model’s output; priors reveal the assumptions that govern that output.
+
+2.1 From Prediction to Prior Formation
+A world model never observes the future directly. It observes a partial history and must roll that
+history forward. When the evidence is complete, prediction may largely follow visible dynamics. But
+when an object is occluded, an agent hesitates, a social role matters, or the same motion occurs in a
+different context, the model must fill gaps using learned expectations.
+Definition: Latent Behavioral Prior
+
+A latent behavioral prior is a learned expectation that systematically influences future rollouts
+when multiple futures remain compatible with the observed evidence.
+
+Latent priors are therefore not directly observed. They are inferred from their consequences: shifts
+in future occupancy, trajectory distributions, uncertainty dispersion, collision margins, interaction
+timing, or multimodal rollout structure. In this sense, future prediction becomes a measurement
+instrument: what a model rolls out reveals what it has implicitly learned.
+
+Figure 1: From observation to prior-guided future rollouts. A partial or ambiguous observation can admit
+multiple plausible futures. Latent behavioral priors bias the world model toward particular futures, and
+these biases become visible through rollout structure. In the physical case, object permanence preserves
+future occupancy for an occluded cyclist. In the behavioral case, hesitation expectation produces delayed or
+multimodal crossing rollouts.
+
+2.2 Four Families of Latent Behavioral Priors
+We organize latent behavioral priors into four families: physical, behavioral, social, and contextual.
+Each family captures a different kind of expectation that world models may acquire beyond visible
+observation.
+Physical priors. Physical priors capture assumptions about entities and motion when parts of the
+scene are no longer visible. They answer: what remains true when something is not currently observed?
+A model should preserve object permanence when a cyclist disappears behind a bus, track hidden
+state when a pedestrian passes behind a truck, and maintain motion continuity when a vehicle enters a
+blind turn. The goal is not exact prediction under occlusion, but coherent uncertainty: hidden entities
+should remain possible, spatially plausible, and dynamically consistent.
+Behavioral priors. Behavioral priors capture expectations about what agents are likely to do next.
+They answer: what action is this agent likely to take? A pedestrian near a curb may cross, wait, turn back,
+or continue walking. A child approaching a crossing may hesitate even when its observed trajectory
+matches an adult’s. An elderly pedestrian may induce wider predicted safety margins than a young
+adult under identical motion. These cases reveal priors over intent, hesitation, and risk-sensitive
+behavior.
+Social priors. Social priors capture expectations that arise from interaction among agents. They
+answer: how does who an agent is change what the model expects them to do? A delivery rider and an
+ordinary commuter may approach the same narrow passage with identical geometry and motion, yet
+induce different predictions about acceleration, yielding, or collision avoidance. Multi-agent scenes
+
+further require assumptions about priority, cooperation, and coordination. These priors are expressed
+through role-conditioned rollouts, yielding behavior, and interaction norms.
+Contextual priors. Contextual priors capture expectations induced by the environment itself. They
+answer: how does the same observed motion change meaning across contexts? The same crossing
+trajectory may produce different futures in a structured U.S. crosswalk, a dense Indian market street,
+an unmarked road, or a school zone. Such shifts reveal cultural, environmental, and scene-semantic
+priors beyond observed motion.
+
+Figure 2: Taxonomy of latent behavioral priors. DISCRETIO organizes priors into four families: physical,
+behavioral, social, and contextual. Each family is exposed through controlled scenario probes and measured
+through future rollout signals, such as occupancy persistence, goal preference, yielding behavior, and contextdependent rollout shifts.
+
+2.3 From Latent Priors to Observable Rollout Signals
+Latent behavioral priors are not accessible as internal labels. They must be inferred from rollout-level
+evidence. A prior becomes measurable when a controlled change in hidden state, actor identity, social
+role, or context produces a systematic shift in predicted futures.
+Table 9 links each prior family to its observable signal.
+
+2.4 A Taxonomy for Prior Discovery
+The resulting taxonomy separates the object of measurement from the benchmark protocol. The
+object of measurement is the latent prior; the protocol is the controlled future-rollout setting used
+to expose it. This distinction is important: DISCRETIO is not merely a collection of scenarios, but a
+framework for asking which hidden assumptions govern predicted futures.
+In the next section, we operationalize this taxonomy through DISCRETIO: a benchmark that constructs matched scenarios where hidden state, agent identity, social role, or environmental context
+changes while visible motion is controlled. This allows us to move from prediction accuracy to prior
+discovery: not only asking whether a model predicted the future, but what assumptions made that
+future likely.
+
+Prior Family
+
+Latent Prior
+
+Observable Rollout Signal
+
+Physical
+Physical
+
+Object permanence
+Hidden-state tracking
+
+Physical
+
+Motion continuity
+
+Behavioral
+Behavioral
+
+Intent inference
+Hesitation expectation
+
+Behavioral
+
+Risk sensitivity
+
+Social
+
+Role priors
+
+Social
+
+Yielding expectations
+
+Social
+
+Interaction norms
+
+Contextual
+
+Cultural priors
+
+Contextual
+
+Environmental priors
+
+Contextual
+
+Contextual expectations
+
+Future occupancy persists after occlusion
+Uncertainty expands but remains spatially
+coherent
+Predicted paths respect speed, heading, and
+dynamics
+Future paths diverge toward plausible goals
+Delayed motion, stopping probability, or multimodal hesitation
+Wider safety margins or reduced crossing
+confidence
+Role-conditioned shifts in acceleration,
+yielding, or avoidance
+Changes in priority, timing, and collision margins
+Coordinated multi-agent rollouts rather
+than independent motion
+Different futures under matched motion
+across cultural settings
+Scene-density or road-structure dependent
+prediction shifts
+Scene semantics change predicted intent,
+timing, or uncertainty
+
+Table 2: From priors to observable signals. Latent behavioral priors are inferred from systematic changes in
+future occupancy, trajectories, uncertainty, timing, collision margins, and interaction structure.
+
+Figure 3: Taxonomy of latent behavioral priors. We organize the implicit expectations of predictive world
+models into four families: physical, behavioral, social, and contextual priors. These priors are not directly
+observable; DISCRETIO reveals them through controlled future rollouts when multiple futures are compatible
+with the same observation.
+
+3 DISCRETIO: A Benchmark for Measuring Latent Priors
+The central premise of DISCRETIO is that latent behavioral priors cannot be measured through
+prediction accuracy alone. Instead, they must be revealed through controlled future-rollout probes
+that isolate hidden assumptions while preserving observable evidence. To achieve this, we construct a
+benchmark from approximately 700 hours of real-world Indian suburban video and systematically
+
+transform naturally occurring situations into controlled prior-discovery scenarios.
+Unlike conventional forecasting benchmarks, which evaluate whether a model predicts the future
+correctly, DISCRETIO evaluates how future predictions change when hidden state, agent identity,
+social role, or environmental context is manipulated under controlled conditions. The benchmark
+therefore treats future rollouts as a measurement instrument for exposing latent behavioral priors.
+
+3.1 Benchmark Overview
+DISCRETIO is constructed through a multi-stage pipeline that converts raw video into controlled
+benchmark probes.
+
+Figure 4: DISCRETIO construction pipeline. Raw video is transformed into controlled prior-discovery probes
+through situation mining, candidate filtering, scenario reconstruction, counterfactual generation, and human
+validation.
+
+The pipeline consists of five stages:
+1. Mining naturally occurring prior-triggering situations.
+2. Filtering and quality control.
+3. Reconstruction into canonical benchmark scenes.
+4. Controlled counterfactual generation.
+5. Human validation and benchmark assembly.
+While DISCRETIO is constructed from Indian suburban video, the benchmark does not evaluate
+geographic knowledge. Rather, real-world video serves as a source of naturally occurring ambiguity,
+occlusion, interaction, and contextual variation from which controlled prior-discovery probes are
+derived.
+
+3.2 Mining Prior-Triggering Situations
+The source corpus contains approximately 700 hours of suburban driving and pedestrian video, covering dense traffic, informal crossings, roadside activity, markets, residential streets, and mixed-agent
+interactions.
+Videos are segmented into overlapping temporal windows and processed using object detection,
+multi-object tracking, trajectory estimation, scene parsing, and interaction analysis.
+For each tracked agent, we extract:
+• Position, velocity, and heading trajectories.
+
+Family
+
+Trigger Condition
+
+Representative Situation
+
+Physical
+
+Visibility loss or prolonged occlusion
+Agent reaches decision point
+Interaction requiring negotiation
+Matched motion in different environments
+
+Pedestrian disappears behind truck
+
+Behavioral
+Social
+Contextual
+
+Waiting versus crossing
+Two scooters approaching merge
+Identical maneuver in market and residential road
+
+Table 3: Situation mining rules. DISCRETIO automatically identifies naturally occurring situations likely to
+reveal latent behavioral priors.
+
+• Visibility and occlusion states.
+• Nearby interacting agents.
+• Scene semantics and road topology.
+• Collision margins and interaction distances.
+Rather than searching for specific examples, DISCRETIO searches for prior-triggering situations:
+observations in which multiple futures remain compatible with the available evidence.
+
+Figure 5: Situation mining. Examples of automatically discovered prior-triggering situations from the source
+video corpus.
+
+3.3 Scenario Reconstruction and Counterfactual Generation
+Mined situations are transformed into canonical benchmark scenes through trajectory-preserving
+reconstruction.
+For each candidate clip, we reconstruct:
+• Scene layout.
+• Agent trajectories.
+• Interaction topology.
+• Visibility relationships.
+• Temporal ordering.
+
+Family
+
+Manipulated Variable
+
+Held Constant
+
+Physical
+Behavioral
+Social
+Contextual
+
+Occlusion duration
+Age or vulnerability
+Role identity
+Environment
+
+Trajectory, speed, heading
+Trajectory, scene geometry
+Motion and interaction layout
+Observed trajectory
+
+Table 4: Counterfactual controls. Each benchmark probe modifies a single factor while preserving observable
+motion.
+
+This produces a controllable scene representation that preserves the behavioral structure of the
+original video while enabling systematic manipulation of hidden variables.
+
+Figure 6: Scenario reconstruction. Real-world clips are converted into controllable benchmark scenes while
+preserving trajectories, visibility relationships, and interaction dynamics.
+
+To isolate latent priors, DISCRETIO generates counterfactual variants in which a single factor is
+modified while observable dynamics are held fixed.
+Specifically, we preserve:
+• Observed trajectory.
+• Position.
+• Velocity.
+• Heading.
+• Camera geometry.
+• Scene topology.
+Only the target factor is altered.
+
+3.4 Benchmark Families
+DISCRETIO organizes probes into four families corresponding to the taxonomy introduced in Section 2.
+
+3.5 Quality Control and Human Validation
+All benchmark probes undergo human validation.
+Annotators independently assess:
+
+Figure 7: Counterfactual generation. Controlled modifications isolate hidden variables while preserving
+observable dynamics. Rollout differences reveal latent behavioral priors.
+Family
+
+Prior
+
+Scenario Type
+
+Physical
+Physical
+Physical
+Behavioral
+Behavioral
+Behavioral
+Social
+Social
+Social
+Contextual
+Contextual
+Contextual
+
+Object permanence
+Hidden-state tracking
+Motion continuity
+Intent inference
+Hesitation expectation
+Risk sensitivity
+Role priors
+Yielding expectations
+Interaction norms
+Cultural priors
+Environmental priors
+Contextual expectations
+
+Occlusion events
+Visibility gaps
+Blind turns
+Decision points
+Crossing events
+Vulnerable agents
+Identity substitution
+Space negotiation
+Multi-agent merging
+Cross-environment transfer
+Scene substitution
+Semantic re-rendering
+
+Table 5: Benchmark taxonomy and scenario types.
+
+• Realism.
+• Ambiguity.
+• Factor isolation.
+• Prior-family correctness.
+• Absence of reconstruction artifacts.
+Scenarios are retained only if agreement exceeds a predefined threshold.
+
+3.6 Benchmark Statistics
+Table 7 summarizes the benchmark construction process.
+
+3.7 Evaluation Protocol
+Given an observation sequence, a predictive world model generates future rollouts under the benchmark scenario. Controlled variations are then applied and rollout changes are measured.
+Importantly, DISCRETIO does not ask whether a future prediction is correct. Instead, it asks:
+How does the predicted future change when hidden state, agent identity, social role, or
+environmental context is systematically manipulated?
+
+Validation Measure
+
+Realism
+Ambiguity
+Factor Isolation
+Category Agreement (κ)
+
+Score
+
+X
+X
+X
+X
+
+Table 6: Human validation statistics.
+Stage
+
+Count
+
+Raw video hours
+Segmented clips
+Detected interactions
+Prior-trigger candidates
+Quality-filtered candidates
+Reconstructable scenes
+Human-validated scenarios
+Final benchmark probes
+Counterfactual variants
+
+700 h
+X
+X
+X
+X
+X
+X
+X
+X
+
+Table 7: DISCRETIO construction funnel. The benchmark is mined from approximately 700 hours of real-world
+video and progressively transformed into controlled prior-discovery probes.
+
+The resulting rollout shifts provide a direct window into the latent behavioral priors encoded
+by predictive world models. This benchmark construction enables the transition from prediction
+evaluation to prior discovery, providing the foundation for the quantitative metrics introduced in the
+next section.
+
+4 Metrics for Prior Discovery
+The objective of DISCRETIO is to measure the latent behavioral priors encoded by predictive world
+models. Unlike conventional forecasting benchmarks, which evaluate whether a predicted future
+matches a realized future, DISCRETIO evaluates how predicted futures change under controlled
+interventions and whether those changes are calibrated to empirical outcomes.
+A latent prior is therefore characterized by two properties:
+1. Sensitivity: does the model change its rollout when a controlled factor changes?
+2. Calibration: is that change consistent with real-world behavior?
+
+4.1 Measuring Priors Through Rollout Differences
+Let O denote an observed scene and O 0 a counterfactual variant obtained by modifying a single factor
+while preserving observable dynamics. A predictive world model M generates rollout distributions
+
+R = M (O),
+
+R0 = M (O0 ).
+
+A prior becomes observable only when the intervention induces a change in future prediction.
+We define rollout divergence as
+
+D(R, R0 ) = λτ Dτ + λo Do + λu Du + λi Di + λt Dt ,
+where:
+• Dτ : trajectory divergence,
+• Do : occupancy divergence,
+• Du : uncertainty divergence,
+• Di : interaction divergence,
+
+Signal
+
+Interpretation
+
+Occupancy Shift
+Trajectory Shift
+Timing Shift
+Interaction Shift
+Uncertainty Shift
+
+Persistence or disappearance of hidden entities
+Changes in future paths under intervention
+Changes in stopping, crossing, or yielding time
+Changes in negotiation and avoidance behavior
+Changes in rollout dispersion and ambiguity
+
+Table 8: Observable rollout signals. All latent priors are inferred through systematic changes in future rollouts.
+
+• Dt : timing divergence.
+Different prior families emphasize different components of rollout divergence.
+
+Figure 8: Prior discovery through controlled rollout differences. A latent behavioral prior is revealed by
+the change between original and counterfactual future rollouts. The magnitude and structure of this change
+constitute a measurable prior signal.
+
+4.2 Observable Rollout Signals
+Latent priors are not directly observable. Instead, they manifest through systematic changes in future
+rollouts.
+
+4.3 Prior Sensitivity
+Sensitivity measures whether a world model responds to a controlled intervention.
+To make heterogeneous signals comparable, each metric is normalized:
+
+
+m̃ = clip
+
+
+m
+, 0, 1 ,
+mmax
+
+where mmax is estimated from the empirical range observed in the validation set.
+For distributional comparisons we employ Jensen–Shannon divergence,
+
+1
+1
+JSD(P, Q) = DKL (P kA) + DKL (QkA),
+2
+2
+which provides a bounded and symmetric divergence measure.
+
+1
+A = (P + Q),
+2
+
+Family
+
+Prior
+
+Primary Signal
+
+Physical
+Physical
+Physical
+Behavioral
+Behavioral
+Behavioral
+Social
+Social
+Social
+Contextual
+Contextual
+Contextual
+
+Object permanence
+Hidden-state tracking
+Motion continuity
+Intent inference
+Hesitation expectation
+Risk sensitivity
+Role priors
+Yielding expectations
+Interaction norms
+Cultural priors
+Environmental priors
+Contextual expectations
+
+Occupancy persistence
+State continuity
+Trajectory consistency
+Goal divergence
+Timing shift
+Uncertainty amplification
+Interaction change
+Priority shift
+Coordination patterns
+Context-sensitive divergence
+Scene-conditioned divergence
+Semantic rollout shift
+
+Table 9: Prior families and rollout signals. Each latent prior manifests through characteristic changes in
+future rollouts.
+
+4.4 Prior Calibration
+Sensitivity alone is insufficient. A model may exhibit strong reactions to identity, role, or context while
+producing unrealistic or biased futures.
+We therefore evaluate calibration by comparing rollout changes against empirical outcome distributions estimated from the source video corpus.
+Let E denote the empirical distribution associated with a given intervention and P the distribution
+induced by model rollouts. Calibration is measured as
+
+C = 1 − JSD(P, E).
+A high calibration score indicates that rollout changes are consistent with real-world behavior.
+Sensitivity asks whether the model responds. Calibration asks whether the response is justified.
+
+4.5 Family-Level Prior Profiles
+For each prior family, we compute a sensitivity score and a calibration score.
+Physical priors:
+
+PPS =
+PPC =
+
+g + HST
+g
+] + MC
+OP
+,
+3
+
+COP + CHST + CMC
+.
+3
+
+Behavioral priors:
+
+BPS =
+
+e+ f
+II
+HE + f
+RS
+,
+3
+
+BPC =
+
+CII + CHE + CRS
+.
+3
+
+SPS =
+
+f + YE
+f + IN
+f
+RP
+,
+3
+
+Social priors:
+
+SPC =
+
+CRP + CYE + CIN
+.
+3
+
+Contextual priors:
+
+CTS =
+
+f + EP
+f + CE
+f
+CP
+,
+3
+
+Output
+
+Description
+
+PPS / PPC
+BPS / BPC
+SPS / SPC
+CTS / CTC
+DISCRETIO
+
+Physical sensitivity and calibration
+Behavioral sensitivity and calibration
+Social sensitivity and calibration
+Contextual sensitivity and calibration
+Aggregate prior score
+
+Table 10: Benchmark outputs. DISCRETIO characterizes predictive world models through both the strength
+and the calibration of their latent behavioral priors.
+
+CTC =
+
+CCP + CEP + CCE
+.
+3
+
+4.6 DISCRETIO Score
+Each model is represented by two complementary vectors:
+
+s(M ) = [PPS, BPS, SPS, CTS],
+c(M ) = [PPC, BPC, SPC, CTC].
+The overall benchmark score is
+
+DISCRETIO(M ) =
+
+PPS + BPS + SPS + CTS + PPC + BPC + SPC + CTC
+.
+8
+
+Together, these metrics transform world-model evaluation from prediction correctness to prior
+discovery. Rather than asking only whether a model predicts the future accurately, DISCRETIO asks
+what assumptions shape the future it imagines and whether those assumptions are calibrated to
+reality.
+
+5 What Do World Models Implicitly Learn?
+Having defined latent behavioral priors and introduced DISCRETIO as a measurement framework, we
+now address the central empirical question of this paper:
+What do predictive world models learn beyond direct observation?
+DISCRETIO reveals that world models do not merely extrapolate visible motion. Their future rollouts
+are shaped by physical persistence, behavioral expectations, social interaction priors, and contextual assumptions. These priors can improve prediction when calibrated, but they can also introduce
+systematic failure modes when exaggerated or misapplied.
+
+5.1 Experimental Setup
+We evaluate multiple families of predictive systems using the full DISCRETIO benchmark. The evaluated systems include latent predictive architectures, video world models, predictive representation
+learners, and trajectory forecasting baselines. Each model is evaluated using the same observation
+windows, counterfactual variants, rollout budget, and scoring protocol.
+For every probe, we generate rollouts for both the original and counterfactual scene, compute
+prior sensitivity and calibration scores, and aggregate results across physical, behavioral, social,
+and contextual dimensions.
+
+5.2 World Models Learn Physical Persistence
+Finding 1: predictive world models often preserve hidden entities after visual disappearance, but
+struggle with long-horizon hidden-state tracking.
+Across occlusion-based probes, many models continue to allocate future occupancy to agents
+that are no longer visible. This indicates a learned prior for object permanence: the model treats
+hidden entities as continuing to exist rather than erasing them from the future. However, preserving
+
+Figure 9: Prior profiles. Each world model is represented through physical, behavioral, social, and contextual
+prior dimensions, enabling direct comparison of latent assumptions and calibration quality.
+
+existence is easier than preserving state. Models frequently maintain an occluded agent somewhere
+in the future scene, but lose precision over its velocity, heading, or likely re-emergence point.
+For example, when a cyclist disappears behind a bus, stronger models maintain future occupancy
+behind the occluder and predict plausible re-emergence trajectories. Weaker forecasting systems
+often collapse the hidden entity, allowing it to vanish once direct evidence disappears. Similar
+patterns occur for pedestrians behind trucks and vehicles entering blind turns.
+These results suggest that world models learn physical persistence, but not necessarily precise
+hidden-state belief. Object permanence emerges earlier and more robustly than long-horizon motion
+continuity.
+
+5.3 World Models Infer Behavioral Intent
+Finding 2: world models infer future intent from actor identity and vulnerability, even when visible
+motion is matched.
+
+Behavioral probes reveal that identical trajectories can produce different rollout distributions
+when the actor changes. When an adult, child, and elderly pedestrian approach the same crossing
+with matched position, speed, and heading, many models assign different probabilities to crossing,
+stopping, or hesitating.
+These differences appear as timing shifts, increased uncertainty, and multimodal futures. A child
+near a crossing may induce delayed or more dispersed rollouts; an elderly pedestrian may induce
+wider safety margins or higher stopping probability. Such changes are not explained by visible motion
+alone.
+This indicates that predictive systems learn behavioral expectations: they anticipate not only
+where an agent is moving, but what the agent is likely to do next.
+
+Model
+
+V-JEPA 2
+Cosmos
+Genie
+Trajectory Forecasting Baseline
+
+Type
+
+Parameters
+
+Training Data
+
+Predictive representation
+Generative world model
+Interactive world model
+Forecasting baseline
+
+X
+X
+X
+X
+
+X
+X
+X
+X
+
+Table 11: Evaluated models. All models are evaluated on identical DISCRETIO probes with matched rollout
+budgets and scoring protocols.
+
+Figure 10: Physical priors. World models often preserve hidden entities under occlusion, but vary in their
+ability to maintain coherent hidden state and motion continuity.
+
+5.4 World Models Encode Social Expectations
+Finding 3: world models encode role-conditioned expectations in multi-agent interactions.
+
+Social probes show that changing an agent’s role can alter predicted interaction dynamics even
+when geometry and motion are preserved. In narrow-passage, merge, and shared-space scenarios,
+role substitutions affect predicted acceleration, yielding, spacing, and collision avoidance.
+For instance, replacing an ordinary commuter with a delivery rider may shift predicted negotiation
+behavior in a narrow passage. Similar effects arise when comparing taxis, private cars, vendors,
+cyclists, and pedestrians in shared-space scenes. These changes reveal social priors: learned expectations about how different agents behave in interaction.
+These findings suggest that world models learn more than independent trajectories. They acquire
+expectations about coordination, priority, and social negotiation.
+
+5.5 World Models Internalize Context
+Finding 4: context can reshape predicted futures even when observed motion is unchanged.
+
+Contextual probes produce some of the strongest rollout shifts. When the same trajectory is placed
+in different environments, models often generate different futures. A crossing motion rendered in
+a structured crosswalk, a dense market street, an unmarked residential road, or a school zone can
+induce different predictions about stopping, yielding, uncertainty, and collision margins.
+This shows that context acts as a prior over possible futures. The model does not interpret motion
+
+Figure 11: Behavioral priors. Matched motion can yield different predicted futures when actor identity changes,
+revealing priors over intent, hesitation, and risk-sensitive behavior.
+
+Figure 12: Social priors. Role substitutions reveal latent assumptions about yielding, negotiation, and interaction norms.
+
+in isolation; it interprets motion within a scene.
+These results indicate that predictive world models internalize scene-level expectations. This can
+
+Figure 13: Contextual priors. The same observed trajectory can produce different future rollouts when the
+surrounding environment changes, revealing context-sensitive expectations.
+
+improve realism when calibrated, but may also lead to context hallucination when a model over-applies
+environmental assumptions.
+
+5.6 Prior Profiles Across Models
+Different model families exhibit distinct prior profiles. Some models show strong physical persistence
+but weak social sensitivity. Others show stronger behavioral or contextual responses while remaining
+less calibrated under occlusion. Thus, similar prediction accuracy can mask substantially different
+latent assumptions.
+This motivates reporting world models not only by prediction quality, but also by their prior profile:
+the pattern of assumptions they rely on when imagining futures.
+
+5.7 Failure Cases
+Latent priors are useful only when calibrated. When over-amplified or misapplied, they produce
+systematic errors. We observe four recurring failure modes:
+
+1. False object permanence: hidden entities persist in predicted futures even after they plausibly
+leave the scene.
+2. Over-hesitation: models exaggerate delays for vulnerable actors.
+3. Over-socialization: role-based expectations override observed motion.
+4. Context hallucination: environmental priors are transferred to scenes where they do not apply.
+
+Together, these findings show that predictive world models learn far more than kinematic extrapolation. They acquire physical, behavioral, social, and contextual priors that shape imagined futures.
+DISCRETIO makes these priors measurable, comparable, and auditable.
+
+Figure 14: Prior profiles across world models. Different architectures exhibit distinct combinations of physical, behavioral, social, and contextual priors. DISCRETIO exposes these differences even when conventional
+prediction metrics appear similar.
+
+Figure 15: Failure modes of latent priors. Incorrect or over-amplified priors can produce plausible-looking
+but systematically biased future rollouts.
+
+6 Emergence of Latent Behavioral Priors
+Section 5 showed that predictive world models express physical, behavioral, social, and contextual
+priors. We now ask a deeper question: how do these priors emerge across model families, and what do
+they reveal about world-model understanding?
+This section moves from individual probes to aggregate structure. We do not introduce new scene
+examples; instead, we analyze how priors vary across models, metrics, and architectures.
+
+6.1 A Hierarchy of Prior Emergence
+Finding 5: Across evaluated models, latent priors exhibit a consistent emergence hierarchy. Physical
+priors are expressed most consistently, followed by behavioral, social, and contextual priors.
+
+Prior Family
+
+Sensitivity
+
+Calibration
+
+Variance
+
+Physical
+Behavioral
+Social
+Contextual
+
+X
+X
+X
+X
+
+X
+X
+X
+X
+
+X
+X
+X
+X
+
+Table 12: Aggregate prior emergence. Family-level sensitivity and calibration averaged across evaluated
+models.
+Metric Pair
+
+ADE vs. DISCRETIO
+FDE vs. DISCRETIO
+mAP vs. DISCRETIO
+Prediction loss vs. DISCRETIO
+
+Correlation
+
+X
+X
+X
+X
+
+Table 13: Forecasting metrics versus prior discovery. Weak or inconsistent correlations indicate that standard
+prediction metrics do not fully capture latent world-model assumptions.
+
+This hierarchy is intuitive. Physical persistence is closely tied to predictive consistency. Behavioral
+intent requires latent agent modeling. Social priors require multi-agent interaction structure.
+Contextual priors require abstraction over scene semantics and environmental regularities.
+
+Figure 16: Emergence hierarchy of latent priors. Physical priors emerge most consistently across predictive
+world models, while social and contextual priors require richer interaction and scene-level abstractions.
+
+The hierarchy does not imply that physical priors are more important. Rather, it suggests that
+current predictive objectives more readily support priors grounded in local physical continuity than
+priors requiring social or contextual abstraction.
+
+6.2 Prediction Accuracy Is Not Prior Understanding
+Finding 6: Conventional prediction accuracy is not a reliable proxy for latent prior quality. Models
+with similar forecasting error can encode substantially different hidden assumptions.
+A model may preserve hidden entities while ignoring social roles; another may react strongly to
+context while failing under occlusion. These differences are largely invisible to standard forecasting
+metrics.
+This challenges a common assumption in world-model evaluation: better prediction does not
+necessarily imply better understanding. Prediction quality and prior structure must be measured
+separately.
+
+Figure 17: Prediction accuracy versus prior understanding. Models with similar forecasting performance
+can exhibit different DISCRETIO scores, showing that prediction accuracy and prior structure are related but
+distinct.
+
+6.3 Prior Complexity Across Model Families
+Finding 7: Different model families acquire different prior structures. Trajectory forecasting systems tend to emphasize local motion and physical continuity. Predictive representation models more
+often preserve hidden state and physical persistence. Interactive and generative world models exhibit
+stronger behavioral and contextual responses, although these responses are not always calibrated.
+
+Figure 18: Prior complexity across model families. As models move from direct trajectory forecasting to
+richer predictive and generative world modeling, the expressed prior structure becomes more diverse.
+
+This pattern suggests that richer predictive objectives may induce richer latent assumptions, but
+also introduce new calibration risks.
+
+Model Family
+
+Physical
+
+Behavioral
+
+Social
+
+Contextual
+
+X
+X
+X
+X
+
+X
+X
+X
+X
+
+X
+X
+X
+X
+
+X
+X
+X
+X
+
+Trajectory forecasting
+Predictive representation
+Interactive world model
+Generative world model
+
+Table 14: Prior structure by model family. Different architectures exhibit different strengths across physical,
+behavioral, social, and contextual dimensions.
+Model
+
+Sensitivity
+
+Calibration
+
+Dominant Prior Family
+
+X
+X
+X
+X
+
+X
+X
+X
+X
+
+X
+X
+X
+X
+
+V-JEPA 2
+Cosmos
+Genie
+Trajectory Forecasting Baseline
+
+Table 15: Sensitivity versus calibration. Models differ not only in how strongly they respond to interventions,
+but also in whether those responses are empirically calibrated.
+
+6.4 Sensitivity and Calibration Are Orthogonal
+Finding 8: High prior sensitivity does not imply high prior calibration. A model can react strongly
+to actor identity, role, or context while producing unrealistic or over-amplified rollout changes.
+Conversely, a model may respond moderately but in a better-calibrated direction.
+
+Figure 19: Prior landscape across world models. Sensitivity measures how strongly rollouts change under
+controlled interventions, while calibration measures how well those changes align with empirical outcomes.
+Models in the upper-right exhibit both strong and well-calibrated priors.
+
+This distinction is central to DISCRETIO. A high-sensitivity model is not necessarily better; it may
+simply be more reactive. A strong world model should be both sensitive to meaningful hidden factors
+and calibrated to real-world outcomes.
+
+6.5 Priors Reveal Hidden Model Biases
+Finding 9: Latent priors expose systematic biases that forecasting error alone often misses.
+We observe four recurring aggregate bias patterns:
+
+• Persistence bias: over-retaining hidden entities after they likely left the scene.
+
+Bias Type
+
+Persistence bias
+Hesitation bias
+Role bias
+Context bias
+
+Frequency
+
+Severity
+
+X
+X
+X
+X
+
+X
+X
+X
+X
+
+Table 16: Aggregate bias analysis. Latent behavioral priors reveal systematic failure modes that may remain
+hidden under conventional prediction metrics.
+
+• Hesitation bias: over-predicting caution for vulnerable actors.
+• Role bias: over-applying social-role expectations.
+• Context bias: transferring environmental assumptions across incompatible scenes.
+
+Figure 20: Bias signatures revealed by latent priors. Different world models exhibit distinct patterns of
+persistence, hesitation, role, and context bias.
+
+These bias signatures are not merely errors; they reveal the assumptions models rely on when
+evidence is incomplete. This makes DISCRETIO useful not only for benchmarking, but also for auditing
+predictive systems.
+
+6.6 From Prediction to Understanding
+The central message of this analysis is that prediction and understanding are not equivalent. A model
+may predict plausible futures while relying on brittle, biased, or poorly calibrated priors. Conversely,
+a model may have modest prediction accuracy but encode useful assumptions about hidden state,
+intent, interaction, or context.
+DISCRETIO therefore reframes world-model evaluation. Instead of asking only:
+Did the model predict the future correctly?
+we ask:
+What assumptions made that future likely?
+
+This shift matters because predictive world models are increasingly used in embodied agents,
+planning systems, simulation engines, and decision-making pipelines. In such settings, risk often
+comes not from visibly implausible predictions, but from plausible rollouts produced by incorrect
+hidden assumptions.
+By exposing these assumptions, DISCRETIO moves world-model evaluation from prediction assessment to prior discovery. The result is a more diagnostic view of world-model behavior: not only what
+futures a model predicts, but what kind of world it implicitly assumes it is predicting.
+
+7 Discussion and Future Directions
+DISCRETIO reframes world-model evaluation around a simple but consequential shift: from asking
+whether a model predicts plausible futures to asking what assumptions make those futures plausible.
+The preceding sections show that predictive world models encode structured latent behavioral priors
+over persistence, intent, interaction, and context. This section discusses what this shift implies for
+evaluation, embodied AI, safety, and future world-model research.
+
+7.1 From Prediction to Understanding
+Modern world-model evaluation is largely built around a single question:
+Can the model predict the future?
+This question is important, but incomplete. Predictive performance captures what future is produced, but not why that future emerges. Two models can generate similarly accurate futures while
+relying on fundamentally different hidden assumptions.
+DISCRETIO therefore separates three complementary dimensions of world-model behavior:
+1. Prediction: Does the model generate plausible futures?
+2. Prior Sensitivity: Does the model respond to meaningful hidden factors?
+3. Prior Calibration: Are those responses justified by real-world outcomes?
+A model may excel on one dimension while failing on another. Thus, forecasting accuracy alone is not
+a sufficient proxy for world understanding.
+
+7.2 What DISCRETIO Adds
+DISCRETIO makes latent behavioral priors observable through controlled interventions and rollout
+comparisons. Its contribution is not merely another benchmark score, but a diagnostic framework for
+asking:
+What kind of world does the model assume when evidence is incomplete?
+The framework provides four capabilities:
+• Prior Discovery: exposing assumptions invisible to conventional forecasting metrics.
+• Controlled Probing: isolating hidden variables while preserving observed dynamics.
+• Sensitivity–Calibration Separation: distinguishing whether a model reacts from whether the
+reaction is justified.
+• Prior Profiling: characterizing models by their physical, behavioral, social, and contextual assumptions.
+Together, these capabilities transform latent priors from an implicit property of world models into
+a measurable object of study.
+
+7.3 Implications for Embodied AI and Planning
+World models are increasingly used inside embodied agents, autonomous systems, planning frameworks, and simulation engines. In these settings, agents do not act on observed reality alone; they act
+on imagined futures. The quality of those futures depends directly on the quality of the priors that
+generate them.
+Incorrect priors can produce plausible but unsafe rollouts. A robot may over-preserve an occluded
+agent that has left the scene. A planner may become overly conservative because of exaggerated
+hesitation priors. A model may over-apply social-role expectations or transfer contextual behavior
+across incompatible environments.
+The danger is therefore not only implausible prediction. It is plausible prediction driven by
+incorrect hidden assumptions. This is precisely the class of failure that DISCRETIO is designed to
+expose.
+
+7.4 Limitations
+Several limitations remain.
+First, DISCRETIO is constructed from approximately 700 hours of Indian suburban video. This setting provides rich ambiguity, occlusion, interaction, and contextual diversity, but it does not represent
+the full range of global mobility cultures. The benchmark should therefore be viewed as a first step
+toward broader cross-cultural prior evaluation.
+Second, the benchmark relies on scenario reconstruction and counterfactual generation. Although
+filtering and validation reduce artifacts, some generated variants may still introduce confounds.
+Third, calibration depends on empirical outcome distributions. Rare events and long-tail interactions remain difficult to estimate reliably.
+Fourth, some world models expose limited rollout uncertainty, restricting the evaluation of richer
+belief structures.
+Finally, DISCRETIO measures priors behaviorally through outputs. It reveals that a prior exists, but
+not necessarily where or how it is represented internally.
+
+7.5 Future Directions
+DISCRETIO opens several directions for future work.
+Cross-cultural prior discovery. Future versions can expand beyond Indian suburban scenes to
+compare priors across cities, countries, traffic cultures, and mobility regimes.
+Action-conditioned prior evaluation. Current probes focus on passive prediction. A natural extension is to study how latent priors influence planning, control, and intervention.
+Mechanistic prior analysis. Combining DISCRETIO with interpretability methods may reveal where
+physical, behavioral, social, and contextual priors are encoded inside world-model representations.
+Prior-aware training and safety. Controlled probes can be used not only for evaluation, but also for
+training models to improve calibration, reduce harmful over-generalization, and detect unsafe hidden
+assumptions before deployment.
+
+8 Conclusion
+Predictive world models are no longer just tools for forecasting. They are becoming the substrate for
+planning, simulation, embodied control, and decision making. In such settings, the critical question
+is not only:
+What future does the model predict?
+but also:
+What assumptions make that future plausible?
+
+We introduced DISCRETIO, a benchmark and evaluation framework for discovering latent behavioral
+priors in predictive world models. Through controlled interventions and sensitivity–calibration analysis, DISCRETIO reveals whether models encode assumptions about physical persistence, behavioral
+intent, social interaction, and environmental context.
+
+The larger lesson is simple but important:
+• Prediction is not understanding.
+• Sensitivity is not calibration.
+• Plausible futures can still be driven by brittle priors.
+• World models must be evaluated not only by what they predict, but by what they assume.
+This shift matters for the future of embodied AI. A robot, planner, or simulator does not act on pixels
+alone; it acts on imagined futures. If those futures are shaped by incorrect hidden assumptions, the
+resulting behavior may appear reasonable while remaining unsafe, biased, or poorly calibrated.
+The central message of this paper is that world models do not merely predict the future; they
+implicitly construct theories about the world they predict. By making those theories observable,
+measurable, and auditable, DISCRETIO moves world-model evaluation beyond prediction assessment
+toward a deeper science of predictive intelligence.
+
+References
+Mahmoud Assran et al. 2025. V-jepa 2: Self-supervised video world models enable understanding,
+prediction and planning.
+David Ha and J”urgen Schmidhuber. 2018. World models. arXiv preprint arXiv:1803.10122.
+Danijar Hafner, Timothy Lillicrap, Mohammad Norouzi, and Jimmy Ba. 2020. Dream to control: Learning
+behaviors by latent imagination. In International Conference on Learning Representations (ICLR).
+Danijar Hafner, Jurgis Pasukonis, Jimmy Ba, and Timothy Lillicrap. 2023. Mastering diverse domains
+through world models. Nature, 620:835–844.
+Yann LeCun. 2022. A path towards autonomous machine intelligence. OpenReview.
+
+
