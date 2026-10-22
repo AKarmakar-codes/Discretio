@@ -1,0 +1,79 @@
+================================================================================
+DISCRETIO BENCHMARK: SELECTED DATASETS SPECIFICATION
+Paper: "What Do World Models Implicitly Learn? Revealing Latent Behavioral Priors Through Future Rollouts"
+Target Priority: Behavioral Prior (End-to-End Pipeline) & Contextual Baseline
+================================================================================
+
+1. IDD-PeD (Indian Driving Dataset - Pedestrian) [ANCHOR DATASET]
+--------------------------------------------------------------------------------
+- Purpose: Primary reference for unstructured traffic, dense interactions, non-signalized
+  crossings, and Indian behavioral ground truth.
+- Perspective: Egocentric front-facing vehicle camera (1080p GoPro at 10-30 Hz).
+- Volume: ~5,000 pedestrians, ~205,000 annotated frames, 9 video sets.
+- Key Annotations for Behavioral Prior:
+  * Age Brackets: child, teenager, adult, senior (native in released annotations)
+  * Gender: male, female, default
+  * Crossing Behaviors: crossing (yes/no), crossing motive (yes/maybe/no), crossing point (frame id)
+  * Crossing Dynamics: crossing unobstructed (CU), crossing diagonal (CD), crossing interrupted/hesitation (CI), jaywalking
+  * Actions: walking, moving swiftly (sprinting), standing, sitting
+  * Attention & Gaze: looking over shoulder (LOS), facing towards traffic (FTT), not looking (NL), distracted behavior (DB)
+  * Vehicle Telemetry: Ego speed and GPS at 10 Hz
+- Access Links & Repositories:
+  * GitHub: https://github.com/Ruthvik9/IDD-PeD
+  * Hugging Face: https://huggingface.co/datasets/Ruthvik9/IDD-PeD
+  * Project Page: https://cvit.iiit.ac.in/research/projects/cvit-projects/iddped
+  * Videos: Hosted in 9 tar files (gp_set_0001.tar to gp_set_0009.tar, ~9 GB each)
+    URL pattern: https://cvit.iiit.ac.in/images/datasets/IDDPed/Videos/gp_set_0001.tar
+- Practical Note: Download video tarballs one at a time to manage local disk space.
+
+
+2. JAAD (Joint Attention for Autonomous Driving) [CORE DATASET]
+--------------------------------------------------------------------------------
+- Purpose: Primary structured Western reference for pedestrian-driver communication,
+  demographic priors, and crosswalk behavior.
+- Perspective: Egocentric dashcam (1080p at 30 fps).
+- Volume: 346 video clips (5-10 sec each), ~82,000 frames, ~2,793 pedestrian tracks.
+- Key Annotations for Behavioral Prior:
+  * Age Brackets: child, young-adult, adult, senior
+  * Gender: male, female
+  * Behavioral Actions: standing, walking, crossing vs not-crossing, hesitation
+  * Attention / Gaze: looking at vehicle vs not-looking, nodding, gesturing
+  * Scene Context: designated crosswalk (yes/no), traffic signal (red/green/none)
+- Access Links & Repositories:
+  * GitHub: https://github.com/ykotseruba/JAAD (Branch: JAAD_2.0)
+  * Full Video Archive (3.08 GB): https://data.nvision2.eecs.yorku.ca/JAAD_dataset/data/JAAD_clips.zip
+
+
+3. PIE (Pedestrian Intent Estimation) [CORE DATASET]
+--------------------------------------------------------------------------------
+- Purpose: Unbiased continuous base rate reference for crossing intention and high-precision
+  kinematic ground truth in structured Western traffic.
+- Perspective: Egocentric front-facing vehicle camera (1080p at 30 fps) + OBD-II sensors.
+- Volume: 6 hours of continuous driving in downtown Toronto, 53 sequences, ~293,000 frames,
+  1,842 pedestrians.
+- Key Annotations for Behavioral Prior:
+  * Age Brackets: child, adult, senior
+  * Crossing Intention: binary crossing intent (0/1) with critical crossing event timestamps
+  * Behavioral Actions: walking, standing, looking/attention
+  * Vehicle Dynamics: calibrated 30 Hz OBD-II speed, longitudinal/lateral acceleration, GPS, compass heading
+- Access Links & Repositories:
+  * GitHub: https://github.com/aras62/PIE
+  * Utilities & Dataloaders: Included directly in the repository
+
+
+4. TITAN (Trajectory Inference and Tracking in Autonomous Navigation) [CORE DATASET]
+--------------------------------------------------------------------------------
+- Purpose: Structured Asian mega-city reference with dense multi-agent coordination,
+  layered action taxonomy, and communicative cues.
+- Perspective: Egocentric front-facing vehicle camera (1080p GoPro at 60 fps) + IMU/GPS.
+- Volume: 700 video clips (10-20 sec each), Tokyo downtown streets.
+- Key Annotations for Behavioral Prior:
+  * Age Brackets: child, adult, senior
+  * Hierarchical Actions: 50 distinct action labels (crossing road, waiting to cross,
+    walking along road, looking at phone, pushing cart/pram)
+  * Communicative Actions: looking, nodding, hand gesturing
+  * Vehicle Telemetry: Synchronized IMU acceleration and angular velocity
+- Access Links & Repositories:
+  * Official Portal: https://usa.honda-ri.com/titan
+  * Access: Academic request form via institutional university email
+
