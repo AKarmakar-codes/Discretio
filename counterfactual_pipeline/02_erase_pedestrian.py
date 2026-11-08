@@ -36,6 +36,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -86,19 +87,39 @@ def run_propainter(
     ]
     print(f"  Running ProPainter: {' '.join(cmd)}")
     result = subprocess.run(cmd, capture_output=False)
-    return result.returncode == 0
+    if result.returncode != 0:
+        return False
+
+    # Upstream ProPainter saves <output>/<video_name>/frames/0000.png,
+    # whereas later DISCRETIO steps expect the source frame names at the
+    # output root. Map by sorted sequence and reject incomplete generations.
+    source_frames = sorted(Path(frames_dir).glob("frame_*.png"))
+    generated_frames = sorted(Path(output_dir).glob("**/frames/*.png"))
+    if not source_frames or len(generated_frames) != len(source_frames):
+        print(f"  [ERROR] ProPainter frame count mismatch: source={len(source_frames)}, "
+              f"generated={len(generated_frames)}")
+        return False
+    for source, generated in zip(source_frames, generated_frames):
+        image = cv2.imread(str(generated))
+        if image is None:
+            return False
+        cv2.imwrite(str(Path(output_dir) / source.name), image)
+    return True
 
 
 def fallback_inpaint(
     frame: np.ndarray,     # (H, W, 3) BGR
     mask: np.ndarray,      # (H, W) uint8, 255=region to inpaint
-    radius: int = 3,
+    radius: int = 5,
+    allow_fallback: bool = False,
 ) -> np.ndarray:
     """
-    OpenCV inpainting cannot reconstruct a person-sized video region. Fail
-    closed so a placeholder can never be mistaken for benchmark data.
+    OpenCV inpainting fallback for pipeline validation. When allow_fallback is False,
+    fails closed so a placeholder is not mistaken for paper benchmark data.
     """
-    raise RuntimeError("ProPainter is required; OpenCV inpainting is not a valid replacement.")
+    if allow_fallback:
+        return cv2.inpaint(frame, mask, inpaintRadius=radius, flags=cv2.INPAINT_TELEA)
+    raise RuntimeError("ProPainter is required; OpenCV inpainting is not a valid replacement. Use --allow_fallback for testing.")
 
 
 # ---------------------------------------------------------------------------
@@ -159,6 +180,7 @@ def process_clip(
     video_dir: str,
     out_dir: Path,
     propainter_dir: Optional[str],
+    allow_fallback: bool = False,
 ) -> None:
     clip_id  = clip["clip_id"]
     video_id = clip["video_id"]
@@ -186,36 +208,20 @@ def process_clip(
         if n == 0:
             print(f"  [SKIP] No frames extracted for {clip_id}")
             return
+        first = cv2.imread(str(sorted(Path(raw_tmp).glob("frame_*.png"))[0]))
+        if first is None:
+            raise RuntimeError(f"Could not read extracted frame for {clip_id}")
+        height, width = first.shape[:2]
 
         # --- Run ProPainter (preferred) ---
         if propainter_dir and run_propainter(
-            raw_tmp, str(clip_masks_dir), str(erased_dir), propainter_dir
+            raw_tmp, str(clip_masks_dir), str(erased_dir), propainter_dir,
+            width=width, height=height,
         ):
             print(f"  ProPainter completed for {clip_id}.")
 
         else:
-            # No image-only fallback is valid for this video reconstruction.
-            print(f"  [ERROR] ProPainter failed or is unavailable for {clip_id}.")
-            frame_paths = sorted(Path(raw_tmp).glob("frame_*.png"))
-            mask_paths  = sorted(clip_masks_dir.glob("frame_*.png"))
-
-            # Pair by frame number
-            mask_map = {p.stem: p for p in mask_paths}
-            for fp in frame_paths:
-                frame = cv2.imread(str(fp))
-                if frame is None:
-                    continue
-                mask_path = mask_map.get(fp.stem)
-                if mask_path is None:
-                    # No mask for this frame → copy unchanged
-                    cv2.imwrite(str(erased_dir / fp.name), frame)
-                    continue
-                mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE)
-                if mask is None:
-                    cv2.imwrite(str(erased_dir / fp.name), frame)
-                    continue
-                erased = fallback_inpaint(frame, mask)
-                cv2.imwrite(str(erased_dir / fp.name), erased)
+            raise RuntimeError(f"ProPainter failed or is unavailable for {clip_id}; refusing fallback output.")
 
         # --- Self-quality check (must be inside the with-block while raw_tmp exists) ---
         orig_frames_q, erased_frames_q, masks_q = [], [], []
@@ -270,6 +276,8 @@ def main():
     parser.add_argument("--out_dir",         default="pipeline_output/02_erased")
     parser.add_argument("--propainter_dir",  default=None,
                         help="Path to the ProPainter repo root (contains inference_propainter.py).")
+    parser.add_argument("--allow_fallback",   action="store_true",
+                        help="Allow OpenCV inpainting fallback for pipeline testing if ProPainter is unavailable.")
     parser.add_argument("--clip_ids",        nargs="*", default=None)
     args = parser.parse_args()
 
@@ -285,7 +293,7 @@ def main():
 
     for clip in clips:
         print(f"\n[Clip] {clip['clip_id']}")
-        process_clip(clip, masks_dir, args.video_dir, out_dir, args.propainter_dir)
+        process_clip(clip, masks_dir, args.video_dir, out_dir, args.propainter_dir, allow_fallback=args.allow_fallback)
 
     print("\nDone. Erased frames written to:", out_dir)
 

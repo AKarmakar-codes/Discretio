@@ -58,9 +58,31 @@ DEFAULT_SAM2_CONFIG     = "sam2_hiera_l.yaml"
 
 def build_sam2_predictor(checkpoint: str, config: str):
     """
-    Load SAM 2 VideoPredictor.  Returns None if sam2 is not installed
-    (allowing dry-run / unit testing without the model).
+    Load SAM 2 VideoPredictor. If the checkpoint file is missing,
+    automatically downloads it from Meta's official repository.
     """
+    if not os.path.exists(checkpoint):
+        # Check standard checkpoints directory
+        candidates = [
+            os.path.join("checkpoints", checkpoint),
+            os.path.join("checkpoints", os.path.basename(checkpoint)),
+            os.path.join("/kaggle/working/checkpoints", os.path.basename(checkpoint)),
+            os.path.join("/kaggle/working", os.path.basename(checkpoint)),
+        ]
+        found = next((c for c in candidates if os.path.isfile(c)), None)
+        if found:
+            checkpoint = found
+        else:
+            filename = os.path.basename(checkpoint)
+            url = f"https://dl.fbaipublicfiles.com/segment_anything_2/092824/{filename}"
+            print(f"SAM 2 checkpoint '{checkpoint}' not found locally. Downloading from {url} ...")
+            try:
+                import torch
+                os.makedirs(os.path.dirname(os.path.abspath(checkpoint)) or ".", exist_ok=True)
+                torch.hub.download_url_to_file(url, checkpoint)
+            except Exception as e:
+                raise FileNotFoundError(f"Checkpoint '{checkpoint}' not found and auto-download failed: {e}")
+
     try:
         from sam2.build_sam import build_sam2_video_predictor  # type: ignore
         predictor = build_sam2_video_predictor(config, checkpoint)
