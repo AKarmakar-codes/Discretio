@@ -39,7 +39,12 @@ def extract_frames(
         raise IOError(f"Cannot open video: {video_path}")
 
     native_fps = cap.get(cv2.CAP_PROP_FPS) or fps
-    cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+    if total_frames > 0 and start_frame >= total_frames:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame % total_frames)
+    else:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
 
     count = 0
     frame_idx = start_frame
@@ -48,7 +53,12 @@ def extract_frames(
             break
         ret, frame = cap.read()
         if not ret:
-            break
+            # If short sample video, wrap around to loop frames
+            if total_frames > 0:
+                cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                ret, frame = cap.read()
+            if not ret:
+                break
         out_path = out_dir / f"frame_{frame_idx:06d}.png"
         cv2.imwrite(str(out_path), frame)
         count += 1
