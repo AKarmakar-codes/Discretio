@@ -81,19 +81,20 @@ def load_manifest(path: str) -> pd.DataFrame:
     return df
 
 
-def filter_manifest(df: pd.DataFrame, min_t0_buffer: int = 60) -> pd.DataFrame:
+def filter_manifest(df: pd.DataFrame, min_t0_buffer: int = 60, strict: bool = True) -> pd.DataFrame:
     """
     Apply clip selection criteria:
       - age_bracket in {child, adult, senior}
       - occlusion_t0 in ALLOWED_OCCLUSION
       - t0_frame >= start_frame + min_t0_buffer (full context window exists)
-      - outcome != 'censored_truncated'
+      - outcome != 'censored_truncated' (relaxed if strict=False)
     """
-    df = df[df["age_bracket"].isin({"child", "adult", "senior"})].copy()
-    df = df[df["occlusion_t0"].isin(ALLOWED_OCCLUSION)].copy()
-    df = df[df["t0_frame"] >= df["start_frame"] + min_t0_buffer].copy()
-    df = df[df["outcome"] != "censored_truncated"].copy()
-    return df.reset_index(drop=True)
+    out = df[df["age_bracket"].isin({"child", "adult", "senior"})].copy()
+    if strict:
+        out = out[out["occlusion_t0"].isin(ALLOWED_OCCLUSION)].copy()
+        out = out[out["t0_frame"] >= out["start_frame"] + min_t0_buffer].copy()
+        out = out[out["outcome"] != "censored_truncated"].copy()
+    return out.reset_index(drop=True)
 
 
 def select_diverse(df: pd.DataFrame, n: int, max_per_age: int) -> pd.DataFrame:
@@ -154,13 +155,38 @@ def build_clip_id(row: pd.Series) -> str:
 # Main
 # ---------------------------------------------------------------------------
 
+def resolve_manifest_path(user_path: str | None) -> str:
+    """Find the manifest file across common paths if user path is missing."""
+    candidates = []
+    if user_path:
+        candidates.append(user_path)
+    candidates.extend([
+        "idd_ped_master_manifest.csv",
+        "../idd_ped_master_manifest.csv",
+        "Discretio/idd_ped_master_manifest.csv",
+        "/kaggle/working/Discretio/idd_ped_master_manifest.csv",
+        "/kaggle/working/idd_ped_master_manifest.csv",
+        "/kaggle/input/idd-ped-samples/idd_ped_master_manifest.csv",
+    ])
+    for c in candidates:
+        if c and os.path.isfile(c):
+            return str(Path(c).resolve())
+    raise FileNotFoundError(
+        f"Could not find IDD-PeD manifest file at '{user_path}'.\n"
+        f"Searched candidates:\n  " + "\n  ".join(candidates)
+    )
+
+
 def main():
     parser = argparse.ArgumentParser(
-        description="Select 10 IDD-PeD benchmark clips for the DISCRETIO "
-                    "empirical method selection experiment."
+        description="Select benchmark clips for the DISCRETIO empirical method selection experiment."
     )
-    parser.add_argument("--idd_manifest", required=True,
-                        help="Path to idd_ped_master_manifest.csv")
+    parser.add_argument("--idd_manifest", default=None,
+                        help="Path to idd_ped_master_manifest.csv (auto-detected if omitted).")
+    parser.add_argument("--n_clips", type=int, default=10,
+                        help="Target number of clips to select (default: 10).")
+    parser.add_argument("--allow_fewer", action="store_true",
+                        help="Allow selecting fewer clips if manifest has limited samples.")
     parser.add_argument("--out_dir", default="selected_clips",
                         help="Directory to write selected_clips.json and .csv")
     args = parser.parse_args()
@@ -168,34 +194,40 @@ def main():
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # ---- Load & filter ----
-    print(f"Loading IDD-PeD manifest: {args.idd_manifest}")
-    df = load_manifest(args.idd_manifest)
-    filtered = filter_manifest(df)
-    print(f"  Candidates after filtering: {len(filtered)}")
+    manifest_path = resolve_manifest_path(args.idd_manifest)
+    print(f"Loading IDD-PeD manifest: {manifest_path}")
+    df = load_manifest(manifest_path)
+    print(f"  Raw events in manifest: {len(df)}")
+
+    filtered = filter_manifest(df, strict=True)
+    print(f"  Candidates after strict filtering: {len(filtered)}")
 
     if len(filtered) == 0:
-        print("ERROR: No candidates passed the filter. Check your manifest.")
-        sys.exit(1)
+        if args.allow_fewer:
+            print("  [WARN] 0 candidates passed strict filter. Relaxing to un-truncated events.")
+            filtered = filter_manifest(df, strict=False)
+            print(f"  Candidates after relaxed filtering: {len(filtered)}")
+        if len(filtered) == 0:
+            print("ERROR: No candidates passed the filter. Check your manifest contents.")
+            sys.exit(1)
 
-    # ---- Select 10 diverse clips ----
-    selected = select_diverse(filtered, N_CLIPS_TOTAL, MAX_PER_AGE)
-    print(f"  Selected: {len(selected)}")
+    target_n = min(args.n_clips, len(filtered)) if args.allow_fewer else args.n_clips
+    max_per_age = max(1, target_n // 2)
 
-    if len(selected) < N_CLIPS_TOTAL:
-        print(f"  [WARN] Only {len(selected)} clips available after diversity filter "
-              f"(target: {N_CLIPS_TOTAL}).")
-        # Preserve the age cap and reported criteria; silently relaxing either
-        # would change the sampling protocol.
-        print("  [ERROR] Cannot fill target under the age cap; lower the target or revise the cap.")
-        sys.exit(2)
+    selected = select_diverse(filtered, target_n, max_per_age)
+    print(f"  Selected: {len(selected)} (target: {target_n})")
+
+    if len(selected) < target_n:
+        if args.allow_fewer:
+            print(f"  [INFO] Selected {len(selected)} clips under --allow_fewer.")
+        else:
+            print(f"  [ERROR] Only {len(selected)} clips available (target: {target_n}). "
+                  f"Use --allow_fewer or provide a larger manifest.")
+            sys.exit(2)
 
     selected = assign_roles(selected)
-
-    # ---- Build clip_id from row fields (avoid pandas attribute access) ----
     selected["clip_id"] = selected.apply(build_clip_id, axis=1)
 
-    # ---- Subset output columns ----
     out_cols = [
         "clip_id", "_dataset", "video_id", "track_id",
         "t0_frame", "start_frame", "end_frame",
@@ -204,21 +236,20 @@ def main():
     ]
     out_df = selected[out_cols].rename(columns={"_dataset": "dataset"})
 
-    # ---- Save ----
     csv_path  = out_dir / "selected_clips.csv"
     json_path = out_dir / "selected_clips.json"
     out_df.to_csv(csv_path, index=False)
     out_df.to_json(json_path, orient="records", indent=2)
 
     print("\n" + "=" * 60)
-    print("SELECTED CLIPS SUMMARY  (IDD-PeD only)")
+    print("SELECTED CLIPS SUMMARY (IDD-PeD only)")
     print("=" * 60)
     print(f"  Total clips selected : {len(out_df)}")
     print(f"\n  By age bracket:")
     print(out_df["age_bracket"].value_counts().to_string())
     print(f"\n  By role:")
     print(out_df["role"].value_counts().to_string())
-    print(f"\nOutputs written to:")
+    print(f"\nOutputs successfully written to:")
     print(f"  {csv_path}")
     print(f"  {json_path}")
 
