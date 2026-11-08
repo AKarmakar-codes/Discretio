@@ -182,12 +182,29 @@ def export_clip_comparison(
     out_p = Path(out_dir)
     out_p.mkdir(parents=True, exist_ok=True)
 
-    # File paths
-    orig_dir   = base / "03b_method2" / clip_id / "raw_frames"
+    # File paths - check both flat and nested method dirs
+    orig_candidates = [
+        base / "03b_method2" / clip_id / "raw_frames",
+        base / "03b_method2" / clip_id / "method2" / "raw_frames",
+        base / "03a_method1" / clip_id / "raw_frames",
+        base / "03a_method1" / clip_id / "method1" / "raw_frames",
+        base / "01_masks" / clip_id / "raw_frames",
+    ]
+    orig_dir = next((c for c in orig_candidates if c.exists() and list(c.glob("frame_*.png"))), None)
     mask_dir   = base / "01_masks" / clip_id / "masks"
     erased_dir = base / "02_erased" / clip_id / "erased_frames"
-    m1_dir     = base / "03a_method1" / clip_id / "method1" / "frames"
-    m2_dir     = base / "03b_method2" / clip_id / "method2" / "frames"
+    
+    m1_candidates = [
+        base / "03a_method1" / clip_id / "frames",
+        base / "03a_method1" / clip_id / "method1" / "frames",
+    ]
+    m1_dir = next((c for c in m1_candidates if c.exists()), base / "03a_method1" / clip_id / "method1" / "frames")
+
+    m2_candidates = [
+        base / "03b_method2" / clip_id / "frames",
+        base / "03b_method2" / clip_id / "method2" / "frames",
+    ]
+    m2_dir = next((c for c in m2_candidates if c.exists()), base / "03b_method2" / clip_id / "method2" / "frames")
 
     # Metadata
     bbox_path = base / "01_masks" / clip_id / "bboxes.json"
@@ -197,9 +214,9 @@ def export_clip_comparison(
     foot_anchors = json.load(open(fa_path)) if fa_path.exists() else {}
 
     # Gather frame files
+    if orig_dir is None:
+        raise FileNotFoundError(f"No raw frames found for {clip_id} in any searched location.")
     orig_files = sorted(orig_dir.glob("frame_*.png"))
-    if not orig_files:
-        raise FileNotFoundError(f"No raw frames found in {orig_dir}")
 
     step = max(1, len(orig_files) // max_frames)
     sampled_files = orig_files[::step][:max_frames]
@@ -278,11 +295,28 @@ def export_keyframe_grid(
     out_p = Path(out_dir)
     out_p.mkdir(parents=True, exist_ok=True)
 
-    orig_dir = base / "03b_method2" / clip_id / "raw_frames"
+    orig_candidates = [
+        base / "03b_method2" / clip_id / "raw_frames",
+        base / "03b_method2" / clip_id / "method2" / "raw_frames",
+        base / "03a_method1" / clip_id / "raw_frames",
+        base / "03a_method1" / clip_id / "method1" / "raw_frames",
+        base / "01_masks" / clip_id / "raw_frames",
+    ]
+    orig_dir = next((c for c in orig_candidates if c.exists() and list(c.glob("frame_*.png"))), None)
     mask_dir = base / "01_masks" / clip_id / "masks"
     erased_dir = base / "02_erased" / clip_id / "erased_frames"
-    m1_dir = base / "03a_method1" / clip_id / "method1" / "frames"
-    m2_dir = base / "03b_method2" / clip_id / "method2" / "frames"
+    
+    m1_candidates = [
+        base / "03a_method1" / clip_id / "frames",
+        base / "03a_method1" / clip_id / "method1" / "frames",
+    ]
+    m1_dir = next((c for c in m1_candidates if c.exists()), base / "03a_method1" / clip_id / "method1" / "frames")
+
+    m2_candidates = [
+        base / "03b_method2" / clip_id / "frames",
+        base / "03b_method2" / clip_id / "method2" / "frames",
+    ]
+    m2_dir = next((c for c in m2_candidates if c.exists()), base / "03b_method2" / clip_id / "method2" / "frames")
 
     bbox_path = base / "01_masks" / clip_id / "bboxes.json"
     fa_path = base / "01_masks" / clip_id / "foot_anchors.json"
@@ -290,9 +324,9 @@ def export_keyframe_grid(
     bboxes = json.load(open(bbox_path)) if bbox_path.exists() else {}
     foot_anchors = json.load(open(fa_path)) if fa_path.exists() else {}
 
+    if orig_dir is None:
+        raise FileNotFoundError(f"No raw frames found for {clip_id} in any searched location.")
     orig_files = sorted(orig_dir.glob("frame_*.png"))
-    if not orig_files:
-        raise FileNotFoundError(f"No frames found in {orig_dir}")
 
     # Select early, middle (t0), and late frames
     indices = np.linspace(0, len(orig_files) - 1, n_frames, dtype=int)
