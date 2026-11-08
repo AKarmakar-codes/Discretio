@@ -1,0 +1,35 @@
+# Core scientific computing
+numpy>=1.24
+pandas>=2.0
+scipy>=1.11
+
+# Computer vision
+opencv-python>=4.8
+Pillow>=10.0
+
+# Perceptual metrics
+lpips>=0.1.4
+
+# Age estimation (optional — primary backend)
+# Install from: https://github.com/WildChlamydia/MiVOLO
+# mivolo
+
+# Zero-shot fallback age classifier
+# Install from: https://github.com/openai/CLIP
+# clip @ git+https://github.com/openai/CLIP.git
+
+# SAM 2 (Segment Anything Model 2)
+# Install from: https://github.com/facebookresearch/segment-anything-2
+# sam2
+
+# Pose estimation (Method 1 — optional)
+# Install from: https://github.com/IDEA-Research/DWPose
+# dwpose
+
+# Wan2.1-VACE (video diffusion)
+# Install from: https://github.com/Wan-Video/Wan2.1
+# See https://github.com/Wan-Video/Wan2.1/blob/main/docs/VACE.md
+
+# World models (pluggable — install as needed)
+# V-JEPA 2: https://github.com/facebookresearch/vjepa2
+# Cosmos:   https://github.com/NVIDIA/Cosmos

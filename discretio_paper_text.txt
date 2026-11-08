@@ -454,6 +454,15 @@ Specifically, we preserve:
 • Scene topology.
 Only the target factor is altered.
 
+For video-based identity substitutions, this is an experimental requirement,
+not an assumption about a generative editor. An age-conditioned rendering may
+also change body scale, pose, gait, clothing, local background pixels, or
+temporal consistency. Such edits are treated as candidate stimuli only. We
+retain a variant only after independent checks of age-cue perception, pose and
+footpoint preservation, background preservation, and temporal consistency;
+same-age sham edits estimate the effect of the editing process itself. If
+these checks fail, rollout differences cannot be attributed to the age cue.
+
 3.4 Benchmark Families
 DISCRETIO organizes probes into four families corresponding to the taxonomy introduced in Section 2.
 
