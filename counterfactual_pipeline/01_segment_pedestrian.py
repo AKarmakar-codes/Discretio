@@ -136,13 +136,14 @@ def run_sam2_on_clip(
     prompt_x = (xtl + xbr) / 2.0
     prompt_y = (ytl + ybr) / 2.0
 
-    # SAM 2 video predictor expects frames as individual images in a directory.
-    # We pass them via a temporary directory.
+    # SAM 2 video predictor expects frames as integer-named JPEG images in a directory.
+    # (e.g. 000000.jpg, 000001.jpg - SAM2 sorts frames with int(os.path.splitext(p)[0]))
     import tempfile
-    from utils.video_io import array_to_frames
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        array_to_frames(frames, tmpdir, start_index=0, rgb=True)
+        for i, frame in enumerate(frames):
+            img_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            cv2.imwrite(os.path.join(tmpdir, f"{i:06d}.jpg"), img_bgr)
 
         device_type = "cuda" if torch.cuda.is_available() else "cpu"
         autocast = torch.autocast("cuda", dtype=torch.bfloat16) if device_type == "cuda" else __import__("contextlib").nullcontext()
