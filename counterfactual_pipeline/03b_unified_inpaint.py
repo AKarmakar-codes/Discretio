@@ -245,20 +245,23 @@ def process_clip(
     with open(bb_path) as f:
         bboxes = json.load(f)
 
-    # Locate raw video
-    video_path = _find_video(video_dir, dataset, video_id)
-    if video_path is None:
-        print(f"  [SKIP] Video not found for {clip_id}")
-        return {}
-
-    # Extract raw frames
+    # Obtain raw frames (reuse pre-extracted if available)
     raw_frames_dir = clip_out / "raw_frames"
-    raw_frames_dir.mkdir(exist_ok=True)
-    n = extract_frames(video_path, str(raw_frames_dir), start_frame=start_f, end_frame=end_f)
-    if n == 0:
-        print(f"  [SKIP] No frames extracted for {clip_id}")
-        return {}
-    first_frame = cv2.imread(str(raw_frames_dir / f"frame_{start_f:06d}.png"))
+    pre_extracted = masks_dir / clip_id / "raw_frames"
+    if pre_extracted.exists() and list(pre_extracted.glob("frame_*.png")):
+        raw_frames_dir = pre_extracted
+    else:
+        video_path = _find_video(video_dir, dataset, video_id, clip=clip)
+        if video_path is None:
+            print(f"  [SKIP] Video not found for {clip_id}")
+            return {}
+        raw_frames_dir.mkdir(exist_ok=True)
+        n = extract_frames(video_path, str(raw_frames_dir), start_frame=start_f, end_frame=end_f)
+        if n == 0:
+            print(f"  [SKIP] No frames extracted for {clip_id}")
+            return {}
+
+    first_frame = cv2.imread(str(sorted(raw_frames_dir.glob("frame_*.png"))[0]))
     if first_frame is None:
         raise RuntimeError(f"Could not read extracted source frame for {clip_id}")
     actual_height, actual_width = first_frame.shape[:2]
@@ -320,15 +323,34 @@ def process_clip(
     return metadata
 
 
-def _find_video(video_dir: str, dataset: str, video_id: str):
+def _find_video(video_dir: str, dataset: str, video_id: str, clip: Optional[Dict] = None) -> Optional[str]:
+    """
+    Search for a video file in video_dir matching clip, clip_id, or video_id.
+    Looks for .mp4, .avi, .mov extensions, optionally under dataset subfolder.
+    """
     video_dir = Path(video_dir)
+    names_to_try = []
+    if clip and clip.get("local_video"):
+        names_to_try.append(clip["local_video"])
+    if clip and clip.get("clip_id"):
+        for ext in (".mp4", ".avi", ".mov", ".MP4"):
+            names_to_try.append(f"{clip['clip_id']}{ext}")
     for ext in (".mp4", ".avi", ".mov", ".MP4"):
-        for root in [video_dir, video_dir / dataset]:
-            p = root / f"{video_id}{ext}"
-            if p.exists():
+        names_to_try.append(f"{video_id}{ext}")
+
+    roots = [video_dir, video_dir / dataset]
+    for search_root in roots:
+        for name in names_to_try:
+            candidate = search_root / name
+            if candidate.is_file():
+                return str(candidate)
+        for name in names_to_try:
+            for p in search_root.glob(f"**/{name}"):
+                if p.is_file():
+                    return str(p)
+        for p in search_root.glob(f"*{video_id}*.mp4"):
+            if p.is_file():
                 return str(p)
-            for found in root.glob(f"**/{video_id}{ext}"):
-                return str(found)
     return None
 
 

@@ -1,0 +1,75 @@
+# =============================================================================
+# Byte-compiled / optimized / Python runtime
+# =============================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# =============================================================================
+# Large Datasets & Video Files (keep out of git; store on Kaggle / GCS / S3)
+# =============================================================================
+data_local/
+data/
+datasets/
+sample_data*/
+*.mp4
+*.avi
+*.mov
+*.MP4
+*.mkv
+*.webm
+
+# Compressed archives & binary tables
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.gz
+*.parquet
+*.h5
+*.hdf5
+
+# =============================================================================
+# Model Checkpoints & Pre-trained Weights
+# =============================================================================
+checkpoints/
+weights/
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.bin
+*.onnx
+
+# =============================================================================
+# Pipeline Generation Outputs & Logs
+# =============================================================================
+pipeline_output/
+discretio_run/
+outputs/
+results/
+runs/
+*.log
+/tmp/
+
+# =============================================================================
+# Jupyter Notebooks & Virtual Environments
+# =============================================================================
+.ipynb_checkpoints/
+*-checkpoint.ipynb
+.virtual_documents/
+.env
+.venv
+env/
+venv/
+ENV/
+
+# =============================================================================
+# OS & Editor specific files
+# =============================================================================
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

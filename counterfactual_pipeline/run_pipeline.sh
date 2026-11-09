@@ -22,10 +22,14 @@ N_ANNOTATORS=4
 OUT_BASE="pipeline_output"
 # ============================================================
 
-echo "===== STEP 0: Select 10 IDD-PeD benchmark clips ====="
-python 00_select_clips.py \
-    --idd_manifest  "$IDD_MANIFEST" \
-    --out_dir       selected_clips
+if [ -f "$CLIPS_JSON" ]; then
+    echo "===== STEP 0: Using existing clip manifest ($CLIPS_JSON) ====="
+else
+    echo "===== STEP 0: Select 10 IDD-PeD benchmark clips ====="
+    python 00_select_clips.py \
+        --idd_manifest  "$IDD_MANIFEST" \
+        --out_dir       selected_clips
+fi
 
 echo ""
 echo "===== STEP 1: Segment pedestrians (SAM 2) ====="

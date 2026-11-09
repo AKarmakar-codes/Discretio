@@ -300,26 +300,30 @@ def process_clip(
     prompt = AGE_PROMPTS[target_age]
     print(f"  Target age: {target_age}  height_ratio={height_ratio:.2f}")
 
-    # Pose must come from the original actor. Extracting it from the erased
-    # plate (the previous implementation) produces no source skeleton.
+    # Pose must come from the original actor. Check pre-extracted frames first
     pose_frames_dir = None
-    video_path = _find_video(video_dir, clip.get("dataset", "IDD-PeD"), clip["video_id"])
-    if video_path is None:
-        raise FileNotFoundError(f"Original video missing for {clip_id}; pose cannot be recovered.")
-    with tempfile.TemporaryDirectory(prefix="discretio_pose_") as raw_dir:
-        n = extract_frames(video_path, raw_dir, start_frame=start_f, end_frame=int(clip["end_frame"]))
-        if n == 0:
-            raise RuntimeError(f"No source frames extracted for pose conditioning: {clip_id}")
-        frames_arr = frames_to_array(raw_dir)
-        kps_list = extract_pose_sequence(frames_arr, bboxes, start_f)
-        kps_scaled = scale_pose_sequence(kps_list, bboxes, start_f, height_ratio, foot_anchors)
+    pre_extracted = masks_dir / clip_id / "raw_frames"
+    if pre_extracted.exists() and list(pre_extracted.glob("frame_*.png")):
+        frames_arr = frames_to_array(str(pre_extracted))
+    else:
+        video_path = _find_video(video_dir, clip.get("dataset", "IDD-PeD"), clip["video_id"], clip=clip)
+        if video_path is None:
+            raise FileNotFoundError(f"Original video missing for {clip_id}; pose cannot be recovered.")
+        with tempfile.TemporaryDirectory(prefix="discretio_pose_") as raw_dir:
+            n = extract_frames(video_path, raw_dir, start_frame=start_f, end_frame=int(clip["end_frame"]))
+            if n == 0:
+                raise RuntimeError(f"No source frames extracted for pose conditioning: {clip_id}")
+            frames_arr = frames_to_array(raw_dir)
 
-        if kps_scaled is not None:
-            pose_dir = clip_out / "pose_frames"
-            pose_dir.mkdir(exist_ok=True)
-            _render_pose_frames(kps_scaled, frames_arr.shape[2], frames_arr.shape[1],
-                                pose_dir, start_f)
-            pose_frames_dir = str(pose_dir)
+    kps_list = extract_pose_sequence(frames_arr, bboxes, start_f)
+    kps_scaled = scale_pose_sequence(kps_list, bboxes, start_f, height_ratio, foot_anchors)
+
+    if kps_scaled is not None:
+        pose_dir = clip_out / "pose_frames"
+        pose_dir.mkdir(exist_ok=True)
+        _render_pose_frames(kps_scaled, frames_arr.shape[2], frames_arr.shape[1],
+                            pose_dir, start_f)
+        pose_frames_dir = str(pose_dir)
 
     # Run Wan2.1-VACE
     gen_dir = clip_out / "wan_output"
@@ -404,16 +408,34 @@ def _compute_foot_rms(
     return float("nan")
 
 
-def _find_video(video_dir: str, dataset: str, video_id: str) -> Optional[str]:
-    root = Path(video_dir)
-    for base in (root, root / dataset):
+def _find_video(video_dir: str, dataset: str, video_id: str, clip: Optional[Dict] = None) -> Optional[str]:
+    """
+    Search for a video file in video_dir matching clip, clip_id, or video_id.
+    Looks for .mp4, .avi, .mov extensions, optionally under dataset subfolder.
+    """
+    video_dir = Path(video_dir)
+    names_to_try = []
+    if clip and clip.get("local_video"):
+        names_to_try.append(clip["local_video"])
+    if clip and clip.get("clip_id"):
         for ext in (".mp4", ".avi", ".mov", ".MP4"):
-            direct = base / f"{video_id}{ext}"
-            if direct.is_file():
-                return str(direct)
-            matches = sorted(base.glob(f"**/{video_id}{ext}"))
-            if matches:
-                return str(matches[0])
+            names_to_try.append(f"{clip['clip_id']}{ext}")
+    for ext in (".mp4", ".avi", ".mov", ".MP4"):
+        names_to_try.append(f"{video_id}{ext}")
+
+    roots = [video_dir, video_dir / dataset]
+    for search_root in roots:
+        for name in names_to_try:
+            candidate = search_root / name
+            if candidate.is_file():
+                return str(candidate)
+        for name in names_to_try:
+            for p in search_root.glob(f"**/{name}"):
+                if p.is_file():
+                    return str(p)
+        for p in search_root.glob(f"*{video_id}*.mp4"):
+            if p.is_file():
+                return str(p)
     return None
 
 

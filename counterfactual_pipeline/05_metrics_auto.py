@@ -311,18 +311,46 @@ def evaluate_clip(
 
 def _find_or_extract_frames(video_dir: str, clip: Dict) -> str:
     """Return path to a directory of original extracted frames."""
-    tmp = Path("/tmp") / f"discretio_orig_{clip['clip_id']}"
-    if tmp.exists() and any(tmp.glob("frame_*.png")):
-        return str(tmp)
+    clip_id = clip["clip_id"]
+    for cand in [
+        Path("pipeline_output/01_masks") / clip_id / "raw_frames",
+        Path("pipeline_output/03b_method2") / clip_id / "raw_frames",
+        Path("/tmp") / f"discretio_orig_{clip_id}",
+    ]:
+        if cand.exists() and any(cand.glob("frame_*.png")):
+            return str(cand)
 
+    tmp = Path("/tmp") / f"discretio_orig_{clip_id}"
     video_dir_p = Path(video_dir)
-    for ext in (".mp4", ".avi", ".mov"):
-        for root in [video_dir_p, video_dir_p / clip["dataset"]]:
-            vp = root / f"{clip['video_id']}{ext}"
-            if vp.exists():
+    dataset = clip.get("dataset", "")
+    video_id = clip["video_id"]
+
+    names_to_try = []
+    if clip.get("local_video"):
+        names_to_try.append(clip["local_video"])
+    for ext in (".mp4", ".avi", ".mov", ".MP4"):
+        names_to_try.append(f"{clip_id}{ext}")
+        names_to_try.append(f"{video_id}{ext}")
+
+    roots = [video_dir_p]
+    if dataset:
+        roots.append(video_dir_p / dataset)
+
+    for root in roots:
+        for name in names_to_try:
+            vp = root / name
+            if vp.is_file():
                 from utils.video_io import extract_frames
                 tmp.mkdir(parents=True, exist_ok=True)
                 extract_frames(str(vp), str(tmp),
+                               start_frame=int(clip["start_frame"]),
+                               end_frame=int(clip["end_frame"]))
+                return str(tmp)
+        for p in root.glob(f"*{video_id}*.mp4"):
+            if p.is_file():
+                from utils.video_io import extract_frames
+                tmp.mkdir(parents=True, exist_ok=True)
+                extract_frames(str(p), str(tmp),
                                start_frame=int(clip["start_frame"]),
                                end_frame=int(clip["end_frame"]))
                 return str(tmp)

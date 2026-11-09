@@ -303,22 +303,48 @@ def _find_original_frames(video_dir: str, clip: Dict) -> Optional[Path]:
     Locate the extracted original frames for a clip.
     If not pre-extracted, extract them to a tmp location (or return None).
     """
+    clip_id  = clip["clip_id"]
+    # Check if Step 1 already saved raw frames
+    for cand in [
+        Path("pipeline_output/01_masks") / clip_id / "raw_frames",
+        Path("pipeline_output/03b_method2") / clip_id / "raw_frames",
+        Path("/tmp") / f"discretio_orig_{clip_id}",
+    ]:
+        if cand.exists() and any(cand.glob("frame_*.png")):
+            return cand
+
     video_dir_p = Path(video_dir)
     video_id = clip["video_id"]
-    dataset  = clip["dataset"]
+    dataset  = clip.get("dataset", "")
     start_f  = int(clip["start_frame"])
     end_f    = int(clip["end_frame"])
 
-    # Check if already extracted in a known location
-    for ext in (".mp4", ".avi", ".mov"):
-        for root in [video_dir_p, video_dir_p / dataset]:
-            vp = root / f"{video_id}{ext}"
-            if vp.exists():
-                # Extract to a stable tmp path
-                tmp_dir = Path("/tmp") / f"discretio_orig_{clip['clip_id']}"
+    names_to_try = []
+    if clip.get("local_video"):
+        names_to_try.append(clip["local_video"])
+    for ext in (".mp4", ".avi", ".mov", ".MP4"):
+        names_to_try.append(f"{clip_id}{ext}")
+        names_to_try.append(f"{video_id}{ext}")
+
+    roots = [video_dir_p]
+    if dataset:
+        roots.append(video_dir_p / dataset)
+
+    for root in roots:
+        for name in names_to_try:
+            vp = root / name
+            if vp.is_file():
+                tmp_dir = Path("/tmp") / f"discretio_orig_{clip_id}"
                 if not tmp_dir.exists() or not any(tmp_dir.glob("frame_*.png")):
                     from utils.video_io import extract_frames
                     extract_frames(str(vp), str(tmp_dir), start_frame=start_f, end_frame=end_f)
+                return tmp_dir
+        for p in root.glob(f"*{video_id}*.mp4"):
+            if p.is_file():
+                tmp_dir = Path("/tmp") / f"discretio_orig_{clip_id}"
+                if not tmp_dir.exists() or not any(tmp_dir.glob("frame_*.png")):
+                    from utils.video_io import extract_frames
+                    extract_frames(str(p), str(tmp_dir), start_frame=start_f, end_frame=end_f)
                 return tmp_dir
     return None
 

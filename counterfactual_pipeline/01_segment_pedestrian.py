@@ -74,14 +74,21 @@ def build_sam2_predictor(checkpoint: str, config: str):
             checkpoint = found
         else:
             filename = os.path.basename(checkpoint)
-            url = f"https://dl.fbaipublicfiles.com/segment_anything_2/092824/{filename}"
+            date_code = "092824" if "2.1" in filename else "072824"
+            url = f"https://dl.fbaipublicfiles.com/segment_anything_2/{date_code}/{filename}"
             print(f"SAM 2 checkpoint '{checkpoint}' not found locally. Downloading from {url} ...")
             try:
                 import torch
                 os.makedirs(os.path.dirname(os.path.abspath(checkpoint)) or ".", exist_ok=True)
                 torch.hub.download_url_to_file(url, checkpoint)
             except Exception as e:
-                raise FileNotFoundError(f"Checkpoint '{checkpoint}' not found and auto-download failed: {e}")
+                # Fallback to Hugging Face
+                hf_url = f"https://huggingface.co/facebook/{filename.replace('.pt', '').replace('_', '-')}/resolve/main/{filename}"
+                print(f"Meta CDN download failed ({e}). Trying Hugging Face: {hf_url} ...")
+                try:
+                    torch.hub.download_url_to_file(hf_url, checkpoint)
+                except Exception as e2:
+                    raise FileNotFoundError(f"Checkpoint '{checkpoint}' not found and auto-download failed: {e2}")
 
     try:
         from sam2.build_sam import build_sam2_video_predictor  # type: ignore
@@ -195,25 +202,25 @@ def process_clip(
     masks_dir.mkdir(exist_ok=True)
 
     # --- Locate video file ---
-    video_path = _find_video(video_dir, dataset, video_id)
+    video_path = _find_video(video_dir, dataset, video_id, clip=clip)
     if video_path is None:
         print(f"  [SKIP] Video not found for clip {clip_id}")
         return
 
     print(f"  Extracting frames [{start_f}–{end_f}] from {os.path.basename(video_path)} ...")
-    import tempfile
-    with tempfile.TemporaryDirectory() as frame_tmp:
-        n = extract_frames(video_path, frame_tmp, start_frame=start_f, end_frame=end_f)
-        if n == 0:
-            print(f"  [SKIP] No frames extracted for {clip_id}")
-            return
+    raw_frames_dir = clip_out / "raw_frames"
+    raw_frames_dir.mkdir(parents=True, exist_ok=True)
+    n = extract_frames(video_path, str(raw_frames_dir), start_frame=start_f, end_frame=end_f)
+    if n == 0:
+        print(f"  [SKIP] No frames extracted for {clip_id}")
+        return
 
-        from utils.video_io import frames_to_array
-        try:
-            frames = frames_to_array(frame_tmp)
-        except FileNotFoundError as e:
-            print(f"  [SKIP] {e}")
-            return
+    from utils.video_io import frames_to_array
+    try:
+        frames = frames_to_array(str(raw_frames_dir))
+    except FileNotFoundError as e:
+        print(f"  [SKIP] {e}")
+        return
 
     t0_local = t0_f - start_f   # index within the extracted array
     if not 0 <= t0_local < len(frames):
@@ -251,19 +258,33 @@ def process_clip(
     print(f"  ✓ {clip_id}: {len(bboxes)} frames masked.")
 
 
-def _find_video(video_dir: str, dataset: str, video_id: str) -> Optional[str]:
+def _find_video(video_dir: str, dataset: str, video_id: str, clip: Optional[Dict] = None) -> Optional[str]:
     """
-    Search for a video file in video_dir matching video_id.
+    Search for a video file in video_dir matching clip, clip_id, or video_id.
     Looks for .mp4, .avi, .mov extensions, optionally under dataset subfolder.
     """
     video_dir = Path(video_dir)
+    names_to_try = []
+    if clip and clip.get("local_video"):
+        names_to_try.append(clip["local_video"])
+    if clip and clip.get("clip_id"):
+        for ext in (".mp4", ".avi", ".mov", ".MP4"):
+            names_to_try.append(f"{clip['clip_id']}{ext}")
     for ext in (".mp4", ".avi", ".mov", ".MP4"):
-        for search_root in [video_dir, video_dir / dataset]:
-            candidate = search_root / f"{video_id}{ext}"
+        names_to_try.append(f"{video_id}{ext}")
+
+    roots = [video_dir, video_dir / dataset]
+    for search_root in roots:
+        for name in names_to_try:
+            candidate = search_root / name
             if candidate.is_file():
                 return str(candidate)
-            # recursive search one level
-            for p in search_root.glob(f"**/{video_id}{ext}"):
+        for name in names_to_try:
+            for p in search_root.glob(f"**/{name}"):
+                if p.is_file():
+                    return str(p)
+        for p in search_root.glob(f"*{video_id}*.mp4"):
+            if p.is_file():
                 return str(p)
     return None
 

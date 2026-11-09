@@ -197,50 +197,62 @@ def process_clip(
     erased_dir = clip_out / "erased_frames"
     erased_dir.mkdir(parents=True, exist_ok=True)
 
-    # --- Locate video and extract raw frames ---
-    video_path = _find_video(video_dir, dataset, video_id)
-    if video_path is None:
-        print(f"  [SKIP] Video not found for {clip_id}")
-        return
+    # --- Check for existing raw frames or locate video ---
+    pre_extracted = masks_dir / clip_id / "raw_frames"
+    raw_frames_dir: Optional[Path] = None
+    cleanup_tmp = None
 
-    with tempfile.TemporaryDirectory() as raw_tmp:
-        n = extract_frames(video_path, raw_tmp, start_frame=start_f, end_frame=end_f)
+    if pre_extracted.exists() and list(pre_extracted.glob("frame_*.png")):
+        raw_frames_dir = pre_extracted
+    else:
+        video_path = _find_video(video_dir, dataset, video_id, clip=clip)
+        if video_path is None:
+            print(f"  [SKIP] Video not found for {clip_id}")
+            return
+        cleanup_tmp = tempfile.TemporaryDirectory()
+        n = extract_frames(video_path, cleanup_tmp.name, start_frame=start_f, end_frame=end_f)
         if n == 0:
             print(f"  [SKIP] No frames extracted for {clip_id}")
+            cleanup_tmp.cleanup()
             return
-        first = cv2.imread(str(sorted(Path(raw_tmp).glob("frame_*.png"))[0]))
-        if first is None:
-            raise RuntimeError(f"Could not read extracted frame for {clip_id}")
-        height, width = first.shape[:2]
+        raw_frames_dir = Path(cleanup_tmp.name)
 
-        # --- Run ProPainter (preferred) ---
-        if propainter_dir and run_propainter(
-            raw_tmp, str(clip_masks_dir), str(erased_dir), propainter_dir,
-            width=width, height=height,
-        ):
-            print(f"  ProPainter completed for {clip_id}.")
+    first = cv2.imread(str(sorted(raw_frames_dir.glob("frame_*.png"))[0]))
+    if first is None:
+        if cleanup_tmp: cleanup_tmp.cleanup()
+        raise RuntimeError(f"Could not read extracted frame for {clip_id}")
+    height, width = first.shape[:2]
 
-        else:
-            raise RuntimeError(f"ProPainter failed or is unavailable for {clip_id}; refusing fallback output.")
+    # --- Run ProPainter (preferred) ---
+    if propainter_dir and run_propainter(
+        str(raw_frames_dir), str(clip_masks_dir), str(erased_dir), propainter_dir,
+        width=width, height=height,
+    ):
+        print(f"  ProPainter completed for {clip_id}.")
+    else:
+        if cleanup_tmp: cleanup_tmp.cleanup()
+        raise RuntimeError(f"ProPainter failed or is unavailable for {clip_id}; refusing fallback output.")
 
-        # --- Self-quality check (must be inside the with-block while raw_tmp exists) ---
-        orig_frames_q, erased_frames_q, masks_q = [], [], []
-        frame_paths = sorted(Path(raw_tmp).glob("frame_*.png"))
-        for fp in frame_paths:
-            orig = cv2.imread(str(fp))
-            erased_path = erased_dir / fp.name
-            erased = cv2.imread(str(erased_path))
-            if orig is None or erased is None:
-                continue
-            mask_path = clip_masks_dir / fp.name
-            mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE) if mask_path.exists() else None
-            if mask is None:
-                mask = np.zeros(orig.shape[:2], dtype=np.uint8)
-            orig_frames_q.append(orig)
-            erased_frames_q.append(erased)
-            masks_q.append(mask)
+    # --- Self-quality check ---
+    orig_frames_q, erased_frames_q, masks_q = [], [], []
+    frame_paths = sorted(raw_frames_dir.glob("frame_*.png"))
+    for fp in frame_paths:
+        orig = cv2.imread(str(fp))
+        erased_path = erased_dir / fp.name
+        erased = cv2.imread(str(erased_path))
+        if orig is None or erased is None:
+            continue
+        mask_path = clip_masks_dir / fp.name
+        mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE) if mask_path.exists() else None
+        if mask is None:
+            mask = np.zeros(orig.shape[:2], dtype=np.uint8)
+        orig_frames_q.append(orig)
+        erased_frames_q.append(erased)
+        masks_q.append(mask)
 
-    # raw_tmp is now deleted — use variables captured inside the block above
+    if cleanup_tmp:
+        cleanup_tmp.cleanup()
+
     quality = compute_erase_quality(orig_frames_q, erased_frames_q, masks_q)
     with open(clip_out / "erase_quality.json", "w") as f:
         json.dump(quality, f, indent=2)
@@ -250,15 +262,34 @@ def process_clip(
     print(f"  ✓ {clip_id}: erased.  Outside-mask PSNR = {psnr_str} dB")
 
 
-def _find_video(video_dir: str, dataset: str, video_id: str):
+def _find_video(video_dir: str, dataset: str, video_id: str, clip: Optional[Dict] = None) -> Optional[str]:
+    """
+    Search for a video file in video_dir matching clip, clip_id, or video_id.
+    Looks for .mp4, .avi, .mov extensions, optionally under dataset subfolder.
+    """
     video_dir = Path(video_dir)
+    names_to_try = []
+    if clip and clip.get("local_video"):
+        names_to_try.append(clip["local_video"])
+    if clip and clip.get("clip_id"):
+        for ext in (".mp4", ".avi", ".mov", ".MP4"):
+            names_to_try.append(f"{clip['clip_id']}{ext}")
     for ext in (".mp4", ".avi", ".mov", ".MP4"):
-        for root in [video_dir, video_dir / dataset]:
-            p = root / f"{video_id}{ext}"
-            if p.exists():
+        names_to_try.append(f"{video_id}{ext}")
+
+    roots = [video_dir, video_dir / dataset]
+    for search_root in roots:
+        for name in names_to_try:
+            candidate = search_root / name
+            if candidate.is_file():
+                return str(candidate)
+        for name in names_to_try:
+            for p in search_root.glob(f"**/{name}"):
+                if p.is_file():
+                    return str(p)
+        for p in search_root.glob(f"*{video_id}*.mp4"):
+            if p.is_file():
                 return str(p)
-            for found in root.glob(f"**/{video_id}{ext}"):
-                return str(found)
     return None
 
 
